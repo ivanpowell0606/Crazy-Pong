@@ -1,0 +1,2960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Crazy Pong</title>
+  <style>
+    :root { color-scheme: light; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: auto; overflow-x: hidden; }
+    html { font-size: clamp(15px, 1.7vw, 20px); } /* scales menus with viewport */
+    body {
+      background: #0a0a0a;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      padding-top: 6px;
+      font-family: 'Courier New', monospace;
+      color: #fff; user-select: none;
+    }
+    h1 {
+      font-size: 3rem; letter-spacing: 0.5rem;
+      margin-bottom: 0.4rem; color: #fff;
+      text-shadow: 0 0 20px rgba(255,255,255,0.4);
+    }
+    .screen { display: flex; flex-direction: column; align-items: center; gap: 1.3rem; }
+    #game-screen { gap: 0.5rem; }
+    .subtitle { font-size: 0.85rem; color: #888; letter-spacing: 0.15rem; }
+    .btn {
+      padding: 0.75rem 2.4rem; border: 2px solid #fff;
+      background: transparent; color: #fff;
+      font-family: 'Courier New', monospace; font-size: 1rem;
+      letter-spacing: 0.2rem; cursor: pointer;
+      transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+      text-transform: uppercase; min-width: 230px;
+    }
+    .btn:hover { background: #fff; color: #0a0a0a; box-shadow: 0 0 20px rgba(255,255,255,0.4); }
+    .btn-easy   { border-color: #4caf50; color: #4caf50; }
+    .btn-easy:hover   { background: #4caf50; color: #0a0a0a; box-shadow: 0 0 20px rgba(76,175,80,0.4); }
+    .btn-medium { border-color: #ffb300; color: #ffb300; }
+    .btn-medium:hover { background: #ffb300; color: #0a0a0a; box-shadow: 0 0 20px rgba(255,179,0,0.4); }
+    .btn-hard   { border-color: #f44336; color: #f44336; }
+    .btn-hard:hover   { background: #f44336; color: #0a0a0a; box-shadow: 0 0 20px rgba(244,67,54,0.4); }
+    .btn-back {
+      border-color: #555; color: #555;
+      font-size: 0.78rem; padding: 0.5rem 1.6rem;
+      min-width: 0; letter-spacing: 0.15rem;
+    }
+    .btn-back:hover { background: #555; color: #0a0a0a; box-shadow: none; }
+    .diff-desc {
+      font-size: 0.72rem; color: #555;
+      letter-spacing: 0.05rem; text-align: center;
+      line-height: 1.6; max-width: 240px;
+    }
+    .controls-hint {
+      font-size: 0.78rem; color: #555;
+      text-align: center; line-height: 1.9; letter-spacing: 0.04rem;
+    }
+    canvas { border: 2px solid #333; background: #000; box-shadow: 0 0 40px rgba(255,255,255,0.05); display: block; }
+    #pause-hint { font-size: 0.68rem; color: #444; letter-spacing: 0.1rem; }
+
+    /* ── Touch controls ── */
+    #touch-controls {
+      display: none; flex-direction: row;
+      width: 100%; gap: 16px;
+      padding: 10px 0 4px;
+    }
+    .touch-btn {
+      flex: 1; padding: 20px 0;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.75); font-size: 1.8rem; border-radius: 10px;
+      cursor: pointer; -webkit-user-select: none; user-select: none;
+      touch-action: none; -webkit-tap-highlight-color: transparent;
+      transition: background 0.08s;
+    }
+    .touch-btn:active { background: rgba(255,255,255,0.18); }
+
+    /* ── Mobile overrides — driven by .touch-mode class on body ── */
+    body.touch-mode { justify-content: flex-start; padding: 8px 8px 16px; }
+    body.touch-mode h1 { font-size: 2.4rem; letter-spacing: 0.3rem; }
+    body.touch-mode .subtitle { font-size: 0.72rem; letter-spacing: 0.08rem; }
+    body.touch-mode .btn { min-width: 200px; }
+    body.touch-mode #game-screen { padding-top: 6px; gap: 0.3rem; }
+    body.touch-mode #lab-sidebar { display: none !important; }
+    body.touch-mode #pause-hint { display: none; }
+    body.touch-mode #game-layout { gap: 0; }
+    /* Always apply compact layout on genuinely small screens */
+    @media (max-width: 500px) {
+      html { font-size: clamp(13px, 3.8vw, 16px); }
+      body { justify-content: flex-start; padding: 8px 8px 16px; }
+      h1 { font-size: 2.4rem; letter-spacing: 0.3rem; }
+      .subtitle { font-size: 0.72rem; letter-spacing: 0.08rem; }
+      .btn { min-width: 200px; }
+      #game-screen { padding-top: 6px; gap: 0.3rem; }
+      #lab-sidebar { display: none !important; }
+      #pause-hint { display: none; }
+      #game-layout { gap: 0; }
+    }
+    #winner-text { font-size: 1.8rem; letter-spacing: 0.3rem; color: #fff; text-shadow: 0 0 20px rgba(255,255,255,0.5); }
+    #final-score { font-size: 1rem; color: #888; letter-spacing: 0.2rem; }
+    #volume-row { display: flex; align-items: center; gap: 0.75rem; font-size: 0.72rem; color: #555; letter-spacing: 0.08rem; }
+    #volume-row input { cursor: pointer; accent-color: #fff; }
+
+    /* ── Desktop lab bottom bar ── */
+    #lab-desktop-bottom {
+      display: none; flex-direction: column; gap: 6px;
+      width: 100%; padding: 8px 2px 2px;
+    }
+
+    /* ── Mobile lab panel ── */
+    #lab-mobile-panel {
+      display: none; flex-direction: column; gap: 6px;
+      width: 100%; padding: 8px 0 4px;
+    }
+    body.touch-mode #lab-mobile-panel.lab-visible { display: flex; }
+    #lab-mobile-tabs { display: flex; gap: 5px; width: 100%; }
+    .lab-tab-btn {
+      flex: 1; padding: 6px 0; border: 1px solid #333; background: transparent;
+      color: #444; font-family: 'Courier New', monospace; font-size: 0.52rem;
+      letter-spacing: 0.08rem; cursor: pointer; border-radius: 2px;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .lab-tab-btn:hover { border-color: #777; color: #aaa; }
+    .lab-tab-btn.active { border-color: #fff; color: #fff; background: rgba(255,255,255,0.06); }
+    .lab-tab-content { display: flex; flex-direction: column; gap: 4px; }
+
+    .lab-diff-btn {
+      flex: 1; padding: 5px 0; border: 1px solid #333; background: transparent;
+      color: #444; font-family: 'Courier New', monospace; font-size: 0.55rem;
+      letter-spacing: 0.1rem; cursor: pointer; border-radius: 2px;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .lab-diff-btn:hover { border-color: #777; color: #aaa; }
+    .lab-diff-btn.active { border-color: #fff; color: #fff; background: rgba(255,255,255,0.06); }
+
+    /* Lab button on main menu — floats to the right of VS COMPUTER without shifting it */
+    #lab-entry-btn {
+      position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+      margin-left: 0.6rem;
+      padding: 0.45rem 0.8rem; border: 1px solid #444; background: transparent;
+      color: #555; font-family: 'Courier New', monospace; font-size: 0.62rem;
+      letter-spacing: 0.12rem; cursor: pointer; border-radius: 2px;
+      transition: border-color 0.12s, color 0.12s, background 0.12s;
+      white-space: nowrap;
+    }
+    #lab-entry-btn:hover { border-color: #aaa; color: #ccc; background: rgba(255,255,255,0.04); }
+
+    /* Game layout — normal and lab side-by-side */
+    #game-layout { display: flex; gap: 24px; align-items: flex-start; }
+    #canvas-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+
+    /* Lab sidebar */
+    #lab-sidebar {
+      display: none; width: 220px; flex-shrink: 0;
+      flex-direction: column; gap: 18px; padding-top: 4px;
+    }
+    #lab-sidebar.visible { display: flex; }
+    .lab-section-label {
+      font-size: 0.55rem; letter-spacing: 0.18rem; color: #444;
+      text-transform: uppercase; border-bottom: 1px solid #1e1e1e;
+      padding-bottom: 6px; margin-bottom: 2px;
+    }
+    .pu-btn {
+      width: 100%; padding: 7px 10px;
+      background: transparent; border: 1px solid #2a2a2a;
+      color: #555; cursor: pointer;
+      font-family: 'Courier New', monospace; font-size: 0.62rem;
+      letter-spacing: 0.12rem; text-align: left;
+      display: flex; align-items: center; justify-content: space-between;
+      transition: border-color 0.12s, color 0.12s, background 0.12s;
+      border-radius: 3px;
+    }
+    .pu-btn .pname { font-weight: bold; font-size: 0.66rem; }
+    .pu-btn .pdesc { font-size: 0.52rem; color: #444; margin-top: 1px; }
+    .pu-btn .ppill {
+      font-size: 0.48rem; letter-spacing: 0.1rem; padding: 2px 6px;
+      border-radius: 2px; border: 1px solid currentColor; white-space: nowrap;
+      opacity: 0.5;
+    }
+    .pu-btn.on .ppill { opacity: 1; }
+    .pu-btn.on { border-color: var(--col); background: color-mix(in srgb, var(--col) 8%, transparent); }
+    .pu-btn.on .pname { color: var(--col); }
+    .pu-btn.on .pdesc { color: color-mix(in srgb, var(--col) 50%, #444); }
+    .pu-btn.on .ppill { color: var(--col); border-color: var(--col); background: color-mix(in srgb, var(--col) 15%, transparent); }
+    .pu-btn:hover:not(.on) { border-color: #3a3a3a; color: #888; }
+    #lab-reset-btn, #lab-obs-btn {
+      width: 100%; padding: 7px;
+      background: transparent; border: 1px solid #2a2a2a; color: #444;
+      font-family: 'Courier New', monospace; font-size: 0.58rem;
+      letter-spacing: 0.14rem; cursor: pointer; border-radius: 3px;
+      transition: background 0.12s, color 0.12s;
+    }
+    #lab-reset-btn { border-color: #333; color: #555; }
+    #lab-reset-btn:hover { background: #1a1a1a; color: #aaa; }
+    #lab-obs-btn:hover { background: #111; color: #666; }
+    .lab-controls-info {
+      font-size: 0.54rem; color: #2e2e2e; line-height: 1.8; letter-spacing: 0.04rem;
+    }
+    .lab-controls-info span { color: #3e3e3e; }
+
+    /* ── Multiplayer styles ── */
+    #mp-room-code {
+      font-size: 3rem; letter-spacing: 0.7rem; color: #fff;
+      font-family: 'Courier New', monospace; font-weight: bold;
+      text-shadow: 0 0 24px rgba(255,255,255,0.5);
+      border: 2px solid #333; padding: 0.4rem 1.6rem;
+      background: rgba(255,255,255,0.03); border-radius: 4px;
+    }
+    .mp-label { font-size: 0.65rem; color: #555; letter-spacing: 0.15rem; text-align: center; }
+    #mp-status { font-size: 0.72rem; color: #666; letter-spacing: 0.1rem; }
+    #mp-code-input {
+      font-size: 2rem; letter-spacing: 0.5rem; text-align: center;
+      background: transparent; border: 2px solid #444; color: #fff;
+      font-family: 'Courier New', monospace; padding: 0.4rem 1rem;
+      text-transform: uppercase; width: 220px; outline: none;
+      border-radius: 3px; transition: border-color 0.15s;
+    }
+    #mp-code-input:focus { border-color: #aaa; }
+    #mp-join-status { font-size: 0.7rem; color: #666; letter-spacing: 0.1rem; min-height: 1.2em; }
+    .mp-info { font-size: 0.65rem; color: #444; letter-spacing: 0.06rem; text-align: center; line-height: 1.7; }
+    #mp-disconnect-msg {
+      position: fixed; transform: translate(-50%,-50%);
+      background: #0a0a0a; border: 2px solid #f44336; color: #f44336;
+      font-family: 'Courier New', monospace; font-size: 1rem; letter-spacing: 0.2rem;
+      padding: 1.5rem 2.5rem; text-align: center; z-index: 999; display: none;
+    }
+
+    /* ── Settings screen ── */
+    .stg-section { display:flex; flex-direction:column; gap:8px; width:100%; max-width:340px; }
+    .stg-label {
+      font-size:0.55rem; letter-spacing:0.18rem; color:#444; text-transform:uppercase;
+      border-bottom:1px solid #1e1e1e; padding-bottom:5px;
+    }
+    .stg-grid { display:grid; gap:6px; }
+    .stg-grid-3 { grid-template-columns:repeat(3,1fr); }
+    .stg-grid-col { grid-template-columns:1fr; max-width:220px; margin:0 auto; width:100%; }
+    .stg-btn {
+      padding:9px 6px; background:transparent; border:1px solid #2a2a2a;
+      color:#444; cursor:pointer; font-family:'Courier New',monospace;
+      font-size:0.62rem; letter-spacing:0.1rem; text-align:center;
+      border-radius:3px; transition:border-color 0.12s, color 0.12s, background 0.12s;
+    }
+    .stg-btn:hover:not(.on) { border-color:#3a3a3a; color:#777; }
+    .stg-btn.on {
+      border-color:var(--col,#666); color:var(--col,#aaa);
+      background:color-mix(in srgb, var(--col,#666) 8%, transparent);
+    }
+    .stg-note { font-size:0.52rem; color:#333; letter-spacing:0.04rem; text-align:center; }
+
+    /* ── MP Chat overlay input bar ── */
+    #chat-input-bar {
+      position: fixed; display: none; flex-direction: row;
+      align-items: center; gap: 5px;
+      background: rgba(0,0,0,0.75); border: 1px solid #2a2a2a;
+      border-radius: 3px; padding: 4px 8px; z-index: 30;
+    }
+    #mp-chat-input {
+      background: transparent; border: none; outline: none;
+      color: #ccc; font-family: 'Courier New', monospace;
+      font-size: 0.58rem; letter-spacing: 0.03rem; width: 190px;
+    }
+    #mp-chat-input::placeholder { color: #3a3a3a; }
+    #mp-chat-send {
+      background: transparent; border: none; color: #555;
+      font-family: 'Courier New', monospace; font-size: 0.7rem;
+      cursor: pointer; padding: 0 2px; line-height: 1;
+    }
+    #mp-chat-send:hover { color: #40c4ff; }
+    /* Mobile button row — lives above the canvas in the normal layout flow */
+    #mobile-btn-row {
+      display: none; flex-direction: row; align-items: center;
+      width: 100%; padding: 0 0 4px; gap: 8px;
+    }
+    #mobile-chat, #mobile-pause, #mobile-quit {
+      display: none; background: transparent; border: 1px solid #333;
+      color: #555; font-family: 'Courier New', monospace; font-size: 0.65rem;
+      letter-spacing: 0.08rem; padding: 6px 10px; cursor: pointer; border-radius: 3px;
+    }
+    #mobile-quit { margin-left: auto; }
+    /* MP Ready screen */
+    #mp-ready-winner { font-size: 1.8rem; letter-spacing: 0.3rem; color: #fff; text-shadow: 0 0 20px rgba(255,255,255,0.5); }
+    #mp-ready-score  { font-size: 1rem; color: #888; letter-spacing: 0.2rem; }
+    #mp-ready-status { font-size: 0.65rem; letter-spacing: 0.08rem; }
+    /* Quit confirmation overlay */
+    #quit-confirm {
+      position: fixed;
+      background: #0a0a0a; border: 2px solid #555; color: #fff;
+      font-family: 'Courier New', monospace; letter-spacing: 0.1rem;
+      padding: 1.8rem 2.8rem; text-align: center; z-index: 1000;
+      display: none; flex-direction: column; gap: 1rem; min-width: 280px;
+      transform: translate(-50%, -50%);
+    }
+    #quit-confirm p { font-size: 0.9rem; color: #aaa; }
+    #quit-confirm .qbtn-row { display: flex; gap: 10px; justify-content: center; }
+    #quit-confirm .qbtn {
+      padding: 0.55rem 1.4rem; border: 1px solid #555; background: transparent;
+      color: #aaa; font-family: 'Courier New', monospace; font-size: 0.7rem;
+      letter-spacing: 0.12rem; cursor: pointer; border-radius: 2px;
+      transition: background 0.12s, color 0.12s;
+    }
+    #quit-confirm .qbtn-leave { border-color: #f44336; color: #f44336; }
+    #quit-confirm .qbtn-leave:hover  { background: #f44336; color: #0a0a0a; }
+    #quit-confirm .qbtn-stay:hover   { background: #555;    color: #0a0a0a; }
+
+    /* ── Account overlay (login / stats) ── */
+    .acct-overlay {
+      display: none; position: fixed;
+      background: rgba(0,0,0,0.82); z-index: 200;
+      align-items: center; justify-content: center;
+    }
+    .acct-overlay.open { display: flex; }
+    .acct-box {
+      background: #0e0e0e; border: 2px solid #333;
+      padding: 2rem 2.4rem; min-width: 300px; max-width: 360px; width: 90%;
+      display: flex; flex-direction: column; gap: 1rem;
+      font-family: 'Courier New', monospace;
+    }
+    .acct-title {
+      font-size: 0.6rem; letter-spacing: 0.22rem; color: #555;
+      text-transform: uppercase; border-bottom: 1px solid #1e1e1e;
+      padding-bottom: 6px;
+    }
+    .acct-status {
+      font-size: 0.68rem; color: #4caf50; letter-spacing: 0.08rem;
+      min-height: 1.1em; text-align: center;
+    }
+    .acct-err {
+      font-size: 0.65rem; color: #f44336; letter-spacing: 0.06rem;
+      min-height: 1.1em; text-align: center;
+    }
+    .acct-input {
+      background: transparent; border: 1px solid #333; color: #fff;
+      font-family: 'Courier New', monospace; font-size: 0.8rem;
+      letter-spacing: 0.06rem; padding: 0.5rem 0.8rem; outline: none;
+      border-radius: 2px; transition: border-color 0.15s; width: 100%;
+    }
+    .acct-input:focus { border-color: #888; }
+    .acct-input::placeholder { color: #333; }
+    .acct-btn {
+      padding: 0.6rem 1rem; border: 1px solid #fff; background: transparent;
+      color: #fff; font-family: 'Courier New', monospace; font-size: 0.72rem;
+      letter-spacing: 0.14rem; cursor: pointer; border-radius: 2px;
+      text-transform: uppercase; transition: background 0.12s, color 0.12s;
+    }
+    .acct-btn:hover { background: #fff; color: #0a0a0a; }
+    .acct-btn-secondary {
+      border-color: #444; color: #555;
+    }
+    .acct-btn-secondary:hover { background: #444; color: #eee; }
+    .acct-btn-danger { border-color: #f44336; color: #f44336; }
+    .acct-btn-danger:hover { background: #f44336; color: #0a0a0a; }
+    .acct-divider {
+      border: none; border-top: 1px solid #1e1e1e; margin: 0;
+    }
+    .acct-logged-name {
+      font-size: 1rem; color: #fff; letter-spacing: 0.1rem; text-align: center;
+    }
+    .acct-sub { font-size: 0.58rem; color: #444; letter-spacing: 0.06rem; text-align: center; }
+
+    /* ── Stat rows inside stats overlay ── */
+    .stats-section-label {
+      font-size: 0.52rem; letter-spacing: 0.18rem; color: #444;
+      text-transform: uppercase; border-bottom: 1px solid #1a1a1a;
+      padding-bottom: 4px;
+    }
+    .stats-row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 0.65rem; color: #666; letter-spacing: 0.06rem; padding: 2px 0;
+    }
+    .stats-row .stat-label { color: #555; }
+    .stats-row .stat-val   { color: #aaa; }
+    .stats-rate { color: #40c4ff !important; }
+
+    /* ── Side buttons on mode screen (LOGIN, STATS) ── */
+    .mode-side-btn {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      padding: 0.45rem 0.8rem; border: 1px solid #444; background: transparent;
+      color: #555; font-family: 'Courier New', monospace; font-size: 0.62rem;
+      letter-spacing: 0.12rem; cursor: pointer; border-radius: 2px;
+      transition: border-color 0.12s, color 0.12s, background 0.12s;
+      white-space: nowrap;
+    }
+    .mode-side-btn:hover { border-color: #aaa; color: #ccc; background: rgba(255,255,255,0.04); }
+    .mode-side-btn.left  { right: 100%; margin-right: 0.6rem; }
+    .mode-side-btn.right { left:  100%; margin-left:  0.6rem; }
+
+    /* ── MP ready screen identity section ── */
+    #rdy-identity {
+      width: 100%; max-width: 320px;
+      display: flex; flex-direction: column; gap: 0.5rem;
+    }
+    .rdy-id-label {
+      font-size: 0.52rem; color: #444; letter-spacing: 0.15rem;
+      text-transform: uppercase; text-align: center;
+    }
+    .rdy-id-row { display: flex; gap: 6px; align-items: center; }
+    .rdy-id-input {
+      flex: 1; background: transparent; border: 1px solid #2a2a2a; color: #fff;
+      font-family: 'Courier New', monospace; font-size: 0.7rem;
+      letter-spacing: 0.05rem; padding: 0.4rem 0.6rem; outline: none;
+      border-radius: 2px; transition: border-color 0.15s;
+    }
+    .rdy-id-input:focus { border-color: #666; }
+    .rdy-id-input::placeholder { color: #2e2e2e; }
+    .rdy-id-btn {
+      padding: 0.4rem 0.7rem; border: 1px solid #333; background: transparent;
+      color: #555; font-family: 'Courier New', monospace; font-size: 0.58rem;
+      letter-spacing: 0.1rem; cursor: pointer; border-radius: 2px;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+      white-space: nowrap;
+    }
+    .rdy-id-btn:hover { border-color: #aaa; color: #ccc; background: rgba(255,255,255,0.04); }
+    #rdy-id-status { font-size: 0.58rem; color: #555; letter-spacing: 0.06rem; text-align: center; min-height: 1em; }
+  </style>
+</head>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<body>
+
+<div id="mode-screen" class="screen">
+  <h1>CRAZY PONG</h1>
+  <p class="subtitle">THE CLASSIC PONG ARCADE GAME WITH A TWIST</p>
+  <div style="height:0.3rem"></div>
+  <div style="position:relative;display:inline-block">
+    <button class="mode-side-btn left" onclick="openAcctOverlay()" id="login-mode-btn">LOGIN</button>
+    <button class="btn" onclick="showDifficulty()">VS COMPUTER</button>
+    <button id="lab-entry-btn" onclick="startLab()">LAB ↗</button>
+  </div>
+  <div style="position:relative;display:inline-block">
+    <button class="mode-side-btn left" onclick="openStatsOverlay()" id="stats-mode-btn">STATS</button>
+    <button class="btn" onclick="showOnly('2p-screen')">2 PLAYERS</button>
+  </div>
+  <button class="btn" onclick="showMP()" style="border-color:#40c4ff;color:#40c4ff" onmouseover="this.style.background='#40c4ff';this.style.color='#0a0a0a'" onmouseout="this.style.background='transparent';this.style.color='#40c4ff'">MULTIPLAYER</button>
+  <button class="btn btn-back" onclick="showSettings()" style="margin-top:0.1rem;letter-spacing:0.2rem">⚙ &nbsp;SETTINGS</button>
+  <div style="height:0.2rem"></div>
+  <div class="controls-hint">
+    <strong style="color:#666">VS COMPUTER</strong><br>A / D &nbsp;·&nbsp; ← / →<br><br>
+    <strong style="color:#666">2 PLAYERS</strong><br>Player 1 (top): A / D &nbsp;&nbsp;|&nbsp;&nbsp; Player 2 (bottom): ← / →<br><br>
+    SPACE to pause &nbsp;·&nbsp; ESC to quit
+  </div>
+  <div id="volume-row">🔊 Sound &nbsp;<input type="range" id="vol-slider" min="0" max="1" step="0.05" value="0.4" style="width:100px"></div>
+</div>
+
+<div id="difficulty-screen" class="screen" style="display:none">
+  <h1>PONG</h1>
+  <p class="subtitle">VS COMPUTER</p>
+  <div style="height:0.2rem"></div>
+  <button class="btn btn-easy"   onclick="startGame('ai','easy')">EASY</button>
+  <button class="btn btn-medium" onclick="startGame('ai','medium')">MEDIUM</button>
+  <button class="btn btn-hard"   onclick="startGame('ai','hard')">HARD</button>
+  <div class="diff-desc">
+    <span style="color:#4caf50">Easy</span> — slow &amp; distracted<br>
+    <span style="color:#ffb300">Medium</span> — decent reaction time<br>
+    <span style="color:#f44336">Hard</span> — sharp but not perfect
+  </div>
+  <div style="height:0.1rem"></div>
+  <p class="mp-label">POINTS TO WIN</p>
+  <div class="stg-grid" style="grid-template-columns:repeat(9,1fr);gap:5px;max-width:320px">
+    <button class="stg-btn" id="ai-pts-3"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(3)">3</button>
+    <button class="stg-btn on" id="ai-pts-4"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(4)">4</button>
+    <button class="stg-btn" id="ai-pts-5"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(5)">5</button>
+    <button class="stg-btn" id="ai-pts-6"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(6)">6</button>
+    <button class="stg-btn" id="ai-pts-7"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(7)">7</button>
+    <button class="stg-btn" id="ai-pts-8"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(8)">8</button>
+    <button class="stg-btn" id="ai-pts-9"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(9)">9</button>
+    <button class="stg-btn" id="ai-pts-10" style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(10)">10</button>
+    <button class="stg-btn" id="ai-pts-11" style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(11)">11</button>
+  </div>
+  <button class="btn btn-back" onclick="showMode()">← BACK</button>
+</div>
+
+<!-- ── 2 Players setup screen ── -->
+<div id="2p-screen" class="screen" style="display:none">
+  <h1>PONG</h1>
+  <p class="subtitle">2 PLAYERS</p>
+  <div style="height:0.3rem"></div>
+  <p class="mp-label">POINTS TO WIN</p>
+  <div class="stg-grid" style="grid-template-columns:repeat(9,1fr);gap:5px;max-width:320px">
+    <button class="stg-btn" id="twop-pts-3"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(3)">3</button>
+    <button class="stg-btn on" id="twop-pts-4"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(4)">4</button>
+    <button class="stg-btn" id="twop-pts-5"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(5)">5</button>
+    <button class="stg-btn" id="twop-pts-6"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(6)">6</button>
+    <button class="stg-btn" id="twop-pts-7"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(7)">7</button>
+    <button class="stg-btn" id="twop-pts-8"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(8)">8</button>
+    <button class="stg-btn" id="twop-pts-9"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(9)">9</button>
+    <button class="stg-btn" id="twop-pts-10" style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(10)">10</button>
+    <button class="stg-btn" id="twop-pts-11" style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(11)">11</button>
+  </div>
+  <div style="height:0.1rem"></div>
+  <div class="controls-hint" style="font-size:0.68rem">
+    Player 1 (top): <strong style="color:#aaa">A / D</strong> &nbsp;·&nbsp; Player 2 (bottom): <strong style="color:#aaa">← / →</strong>
+  </div>
+  <button class="btn" onclick="startGame('2p',null)">START GAME</button>
+  <button class="btn btn-back" onclick="showMode()">← BACK</button>
+</div>
+
+<div id="game-screen" class="screen" style="display:none">
+  <div id="game-layout" style="flex-wrap:wrap">
+    <div id="canvas-wrap">
+      <div id="mobile-btn-row">
+        <button id="mobile-chat"  onclick="toggleChat()">💬 CHAT</button>
+        <button id="mobile-pause" onclick="if(mpMode==='host')toggleMPPause()">⏸ PAUSE</button>
+        <button id="mobile-quit"  onclick="showQuitConfirm()">✕ QUIT</button>
+      </div>
+      <canvas id="c" width="700" height="825"></canvas>
+      <div id="touch-controls">
+        <button class="touch-btn" id="touch-left">◄</button>
+        <button class="touch-btn" id="touch-right">►</button>
+      </div>
+      <p id="pause-hint">SPACE · pause &nbsp;&nbsp;ESC · leave</p>
+      <!-- Desktop lab bottom bar — difficulty + controls info below canvas -->
+      <div id="lab-desktop-bottom">
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="lab-section-label" style="margin:0;white-space:nowrap">AI DIFFICULTY</span>
+          <button class="lab-diff-btn" id="lab-diff-easy"   onclick="setLabDiff('easy')">EASY</button>
+          <button class="lab-diff-btn active" id="lab-diff-medium" onclick="setLabDiff('medium')">MED</button>
+          <button class="lab-diff-btn" id="lab-diff-hard"   onclick="setLabDiff('hard')">HARD</button>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button id="lab-reset-btn" onclick="labResetAll()">RESET ALL EFFECTS</button>
+          <button id="lab-obs-btn"   onclick="labForceObstacle()">+ SPAWN OBSTACLE</button>
+          <button id="lab-back-btn"  onclick="backToMenu()" style="border-color:#333;color:#444;padding:7px 12px;background:transparent;font-family:'Courier New',monospace;font-size:0.58rem;letter-spacing:0.12rem;cursor:pointer;border-radius:3px;border:1px solid #333;transition:background 0.12s,color 0.12s" onmouseover="this.style.background='#111';this.style.color='#888'" onmouseout="this.style.background='transparent';this.style.color='#444'">← MAIN MENU</button>
+        </div>
+        <div class="lab-controls-info" style="margin:0;text-align:left">
+          <span>P1 (top paddle)</span> &nbsp;A / D &nbsp;·&nbsp; ← / → to move &nbsp;·&nbsp; SPACE to pause
+        </div>
+      </div>
+      <!-- Mobile lab panel — shown below touch controls in touch mode -->
+      <div id="lab-mobile-panel">
+        <div id="lab-mobile-tabs">
+          <button class="lab-tab-btn active" id="lab-tab-you"  onclick="switchLabTab('you')">YOUR BUFFS</button>
+          <button class="lab-tab-btn"        id="lab-tab-ai"   onclick="switchLabTab('ai')">CAST ON AI</button>
+          <button class="lab-tab-btn"        id="lab-tab-give" onclick="switchLabTab('give')">GIVE TO AI</button>
+        </div>
+        <div id="lab-tab-content-you" class="lab-tab-content">
+          <button class="pu-btn" id="mb-top-wide"    style="--col:#00e676" onclick="labToggle('top','wide')"><div><div class="pname">WIDE</div></div><span class="ppill">OFF</span></button>
+          <button class="pu-btn" id="mb-top-curve"   style="--col:#40c4ff" onclick="labToggle('top','curve')"><div><div class="pname">CURVE</div></div><span class="ppill">OFF</span></button>
+          <button class="pu-btn" id="mb-top-power"   style="--col:#ff9100" onclick="labToggle('top','power')"><div><div class="pname">POWER</div></div><span class="ppill">OFF</span></button>
+          <button class="pu-btn" id="mb-top-split"   style="--col:#ffeb3b" onclick="labToggle('top','split')"><div><div class="pname">SPLIT</div></div><span class="ppill">OFF</span></button>
+        </div>
+        <div id="lab-tab-content-ai" class="lab-tab-content" style="display:none">
+          <button class="pu-btn" id="mb-top-shrink"  style="--col:#ff5252" onclick="labToggle('top','shrink')"><div><div class="pname">SHRINK AI</div></div><span class="ppill">OFF</span></button>
+          <button class="pu-btn" id="mb-top-reverse" style="--col:#e040fb" onclick="labToggle('top','reverse')"><div><div class="pname">REVERSE AI</div></div><span class="ppill">OFF</span></button>
+        </div>
+        <div id="lab-tab-content-give" class="lab-tab-content" style="display:none">
+          <button class="pu-btn" id="mb-bot-wide"    style="--col:#00e676" onclick="labToggle('bot','wide')"><div><div class="pname">WIDE (AI)</div></div><span class="ppill">OFF</span></button>
+          <button class="pu-btn" id="mb-bot-curve"   style="--col:#40c4ff" onclick="labToggle('bot','curve')"><div><div class="pname">CURVE (AI)</div></div><span class="ppill">OFF</span></button>
+          <button class="pu-btn" id="mb-bot-power"   style="--col:#ff9100" onclick="labToggle('bot','power')"><div><div class="pname">POWER (AI)</div></div><span class="ppill">OFF</span></button>
+          <button class="pu-btn" id="mb-bot-split"   style="--col:#ffeb3b" onclick="labToggle('bot','split')"><div><div class="pname">SPLIT (AI)</div></div><span class="ppill">OFF</span></button>
+          <button class="pu-btn" id="mb-bot-shrink"  style="--col:#ff5252" onclick="labToggle('bot','shrink')"><div><div class="pname">SHRINK YOU</div></div><span class="ppill">OFF</span></button>
+          <button class="pu-btn" id="mb-bot-reverse" style="--col:#e040fb" onclick="labToggle('bot','reverse')"><div><div class="pname">REVERSE YOU</div></div><span class="ppill">OFF</span></button>
+        </div>
+        <!-- Difficulty + reset row -->
+        <div style="display:flex;gap:6px;margin-top:4px;align-items:center">
+          <button class="lab-diff-btn" id="mb-diff-easy"   onclick="setLabDiff('easy')">EASY</button>
+          <button class="lab-diff-btn active" id="mb-diff-medium" onclick="setLabDiff('medium')">MED</button>
+          <button class="lab-diff-btn" id="mb-diff-hard"   onclick="setLabDiff('hard')">HARD</button>
+          <button onclick="labResetAll()" style="flex:1;padding:5px;border:1px solid #333;background:transparent;color:#555;font-family:'Courier New',monospace;font-size:0.5rem;letter-spacing:0.08rem;cursor:pointer;border-radius:2px">RESET</button>
+        </div>
+      </div>
+    </div>
+    <div id="lab-sidebar">
+      <div>
+        <p class="lab-section-label">Your buffs (P1 top)</p>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <button class="pu-btn" id="lbtn-top-wide"    style="--col:#00e676" onclick="labToggle('top','wide')">
+            <div><div class="pname">WIDE</div><div class="pdesc">Larger paddle</div></div><span class="ppill">OFF</span>
+          </button>
+          <button class="pu-btn" id="lbtn-top-curve"   style="--col:#40c4ff" onclick="labToggle('top','curve')">
+            <div><div class="pname">CURVE</div><div class="pdesc">Curving shots</div></div><span class="ppill">OFF</span>
+          </button>
+          <button class="pu-btn" id="lbtn-top-power"   style="--col:#ff9100" onclick="labToggle('top','power')">
+            <div><div class="pname">POWER</div><div class="pdesc">Speed-boost hits</div></div><span class="ppill">OFF</span>
+          </button>
+          <button class="pu-btn" id="lbtn-top-split"   style="--col:#ffeb3b" onclick="labToggle('top','split')">
+            <div><div class="pname">SPLIT</div><div class="pdesc">Ghost decoy ball</div></div><span class="ppill">OFF</span>
+          </button>
+        </div>
+      </div>
+      <div>
+        <p class="lab-section-label">Cast on opponent</p>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <button class="pu-btn" id="lbtn-top-shrink"  style="--col:#ff5252" onclick="labToggle('top','shrink')">
+            <div><div class="pname">SHRINK AI</div><div class="pdesc">Tiny AI paddle</div></div><span class="ppill">OFF</span>
+          </button>
+          <button class="pu-btn" id="lbtn-top-reverse" style="--col:#e040fb" onclick="labToggle('top','reverse')">
+            <div><div class="pname">REVERSE AI</div><div class="pdesc">Flip AI controls</div></div><span class="ppill">OFF</span>
+          </button>
+        </div>
+      </div>
+      <div>
+        <p class="lab-section-label">Give to AI (test facing them)</p>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <button class="pu-btn" id="lbtn-bot-wide"    style="--col:#00e676" onclick="labToggle('bot','wide')">
+            <div><div class="pname">WIDE (AI)</div><div class="pdesc">AI wider paddle</div></div><span class="ppill">OFF</span>
+          </button>
+          <button class="pu-btn" id="lbtn-bot-curve"   style="--col:#40c4ff" onclick="labToggle('bot','curve')">
+            <div><div class="pname">CURVE (AI)</div><div class="pdesc">AI curving shots</div></div><span class="ppill">OFF</span>
+          </button>
+          <button class="pu-btn" id="lbtn-bot-power"   style="--col:#ff9100" onclick="labToggle('bot','power')">
+            <div><div class="pname">POWER (AI)</div><div class="pdesc">AI speed-boost hits</div></div><span class="ppill">OFF</span>
+          </button>
+          <button class="pu-btn" id="lbtn-bot-split"   style="--col:#ffeb3b" onclick="labToggle('bot','split')">
+            <div><div class="pname">SPLIT (AI)</div><div class="pdesc">AI ghost decoy</div></div><span class="ppill">OFF</span>
+          </button>
+          <button class="pu-btn" id="lbtn-bot-shrink"  style="--col:#ff5252" onclick="labToggle('bot','shrink')">
+            <div><div class="pname">SHRINK (YOU)</div><div class="pdesc">Your paddle shrunk</div></div><span class="ppill">OFF</span>
+          </button>
+          <button class="pu-btn" id="lbtn-bot-reverse" style="--col:#e040fb" onclick="labToggle('bot','reverse')">
+            <div><div class="pname">REVERSE (YOU)</div><div class="pdesc">Your controls flipped</div></div><span class="ppill">OFF</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="game-over-screen" class="screen" style="display:none">
+  <h1>CRAZY PONG</h1>
+  <div id="winner-text"></div>
+  <div id="final-score"></div>
+  <div style="height:0.4rem"></div>
+  <button class="btn" id="rematch-btn" onclick="rematch()">REMATCH</button>
+  <button class="btn btn-back" style="margin-top:-0.3rem" onclick="backToMenu()">MAIN MENU</button>
+</div>
+
+<!-- ── Multiplayer screens ── -->
+<div id="mp-screen" class="screen" style="display:none">
+  <h1>CRAZY PONG</h1>
+  <p class="subtitle">MULTIPLAYER</p>
+  <div style="height:0.3rem"></div>
+  <button class="btn" onclick="hostGame()">HOST GAME</button>
+  <button class="btn" onclick="showJoin()">JOIN GAME</button>
+  <div class="mp-info">Players connect directly — no account needed.<br>Works from any browser on any computer.</div>
+  <button class="btn btn-back" onclick="showMode()">← BACK</button>
+</div>
+
+<div id="mp-host-screen" class="screen" style="display:none">
+  <h1>CRAZY PONG</h1>
+  <p class="subtitle">HOST GAME</p>
+  <div style="height:0.5rem"></div>
+  <p class="mp-label">SHARE THIS CODE WITH YOUR OPPONENT</p>
+  <div id="mp-room-code">·····</div>
+  <div style="height:0.3rem"></div>
+  <p id="mp-status">Creating room…</p>
+  <div class="mp-info">You will be <strong style="color:#fff">Player 1</strong> (top paddle)<br>Controls: A / D &nbsp;or&nbsp; ← / →</div>
+  <div style="height:0.2rem"></div>
+  <button class="btn btn-back" onclick="cancelMP()">CANCEL</button>
+</div>
+
+<div id="mp-join-screen" class="screen" style="display:none">
+  <h1>CRAZY PONG</h1>
+  <p class="subtitle">JOIN GAME</p>
+  <div style="height:0.5rem"></div>
+  <p class="mp-label">ENTER ROOM CODE</p>
+  <input id="mp-code-input" type="text" maxlength="5" placeholder="·····" autocomplete="off" spellcheck="false">
+  <button class="btn" onclick="joinGame()">CONNECT</button>
+  <p id="mp-join-status"></p>
+  <div class="mp-info">You will be <strong style="color:#fff">Player 2</strong> (bottom paddle)<br>Controls: A / D &nbsp;or&nbsp; ← / →</div>
+  <button class="btn btn-back" onclick="showMP()">← BACK</button>
+</div>
+
+<!-- ── Login / Account overlay ── -->
+<div id="acct-overlay" class="acct-overlay" onclick="if(event.target===this)closeAcctOverlay()">
+  <div class="acct-box">
+    <p class="acct-title">ACCOUNT</p>
+    <div id="acct-loggedout">
+      <p class="acct-err" id="acct-err"></p>
+      <input class="acct-input" id="acct-user" type="text" placeholder="USERNAME" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="24">
+      <input class="acct-input" id="acct-pass" type="text" placeholder="PASSWORD" maxlength="64" autocomplete="off" data-lpignore="true" data-form-type="other" style="-webkit-text-security:disc;text-security:disc">
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.6rem;color:#444;letter-spacing:0.08rem;cursor:pointer">
+        <input type="checkbox" id="acct-remember" style="accent-color:#fff;cursor:pointer"> REMEMBER ME
+      </label>
+      <button class="acct-btn" onclick="acctLogin()">LOG IN</button>
+      <button class="acct-btn acct-btn-secondary" onclick="acctCreate()">CREATE ACCOUNT</button>
+    </div>
+    <div id="acct-loggedin" style="display:none">
+      <p class="acct-sub">LOGGED IN AS</p>
+      <p class="acct-logged-name" id="acct-display-name"></p>
+      <p class="acct-status" id="acct-save-status"></p>
+      <button class="acct-btn acct-btn-danger" onclick="acctLogout()">LOG OUT</button>
+    </div>
+    <button class="acct-btn acct-btn-secondary" onclick="closeAcctOverlay()">CLOSE</button>
+  </div>
+</div>
+
+<!-- ── Stats overlay ── -->
+<div id="stats-overlay" class="acct-overlay" onclick="if(event.target===this)closeStatsOverlay()">
+  <div class="acct-box" style="max-width:400px">
+    <p class="acct-title">PLAYER STATS</p>
+    <div id="stats-loggedout-msg" style="text-align:center">
+      <p style="font-size:0.7rem;color:#555;letter-spacing:0.08rem;margin-bottom:1rem">Log in to view your stats</p>
+      <button class="acct-btn" onclick="closeStatsOverlay();openAcctOverlay()">LOG IN</button>
+    </div>
+    <div id="stats-content" style="display:none;flex-direction:column;gap:0.8rem">
+      <p class="stats-section-label">VS COMPUTER</p>
+      <div id="stats-ai-easy"   class="stats-row"><span class="stat-label">EASY</span><span class="stat-val">—</span></div>
+      <div id="stats-ai-medium" class="stats-row"><span class="stat-label">MEDIUM</span><span class="stat-val">—</span></div>
+      <div id="stats-ai-hard"   class="stats-row"><span class="stat-label">HARD</span><span class="stat-val">—</span></div>
+      <hr class="acct-divider">
+      <p class="stats-section-label">MULTIPLAYER</p>
+      <div id="stats-mp-record" class="stats-row"><span class="stat-label">RECORD</span><span class="stat-val">—</span></div>
+      <div id="stats-mp-rate"   class="stats-row"><span class="stat-label">WIN RATE</span><span class="stat-val stats-rate">—</span></div>
+      <hr class="acct-divider">
+      <p class="stats-section-label" style="font-size:0.48rem">RECENT OPPONENTS</p>
+      <div id="stats-mp-opponents" style="font-size:0.58rem;color:#444;letter-spacing:0.04rem;line-height:1.8">—</div>
+    </div>
+    <button class="acct-btn acct-btn-secondary" onclick="closeStatsOverlay()">CLOSE</button>
+  </div>
+</div>
+<div id="mp-disconnect-msg">CONNECTION LOST<br><span style="font-size:0.7rem;letter-spacing:0.1rem">Returning to menu…</span></div>
+
+<!-- ── Quit confirmation ── -->
+<div id="quit-confirm">
+  <p>LEAVE THE GAME?</p>
+  <div class="qbtn-row">
+    <button class="qbtn qbtn-leave" onclick="confirmQuit()">YES, LEAVE</button>
+    <button class="qbtn qbtn-stay"  onclick="cancelQuit()">KEEP PLAYING</button>
+  </div>
+</div>
+
+<!-- ── MP Chat input bar (T to toggle; messages drawn directly on canvas) ── -->
+<div id="chat-input-bar">
+  <input id="mp-chat-input" type="text" maxlength="80" placeholder="chat…" autocomplete="off" spellcheck="false">
+  <button id="mp-chat-send" onclick="sendChatMessage()">↵</button>
+</div>
+
+<!-- ── MP Ready screen (between rounds — both players must ready up) ── -->
+<div id="mp-ready-screen" class="screen" style="display:none">
+  <h1>CRAZY PONG</h1>
+  <div id="mp-ready-winner"></div>
+  <div id="mp-ready-score"></div>
+  <div style="height:0.3rem"></div>
+  <p id="mp-ready-status" class="mp-label">WAITING…</p>
+  <div style="height:0.3rem"></div>
+  <p class="mp-label" id="rdy-pts-label">NEXT GAME — POINTS TO WIN</p>
+  <div class="stg-grid" style="grid-template-columns:repeat(9,1fr);gap:5px;max-width:320px">
+    <button class="stg-btn" id="rdy-pts-3"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(3)">3</button>
+    <button class="stg-btn on" id="rdy-pts-4"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(4)">4</button>
+    <button class="stg-btn" id="rdy-pts-5"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(5)">5</button>
+    <button class="stg-btn" id="rdy-pts-6"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(6)">6</button>
+    <button class="stg-btn" id="rdy-pts-7"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(7)">7</button>
+    <button class="stg-btn" id="rdy-pts-8"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(8)">8</button>
+    <button class="stg-btn" id="rdy-pts-9"  style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(9)">9</button>
+    <button class="stg-btn" id="rdy-pts-10" style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(10)">10</button>
+    <button class="stg-btn" id="rdy-pts-11" style="--col:#aaaaaa;padding:6px 0" onclick="setWinScore(11)">11</button>
+  </div>
+  <div style="height:0.2rem"></div>
+  <button class="btn" id="mp-ready-btn" onclick="mpClickReady()">READY UP</button>
+  <button class="btn btn-back" onclick="backToMenu()">QUIT TO MENU</button>
+  <p id="mp-ready-chat-hint" class="mp-info" style="margin-top:0.4rem">Press <strong style="color:#fff">T</strong> to chat &nbsp;·&nbsp; Both players must ready to rematch</p>
+  <div id="rdy-identity">
+    <p class="rdy-id-label">YOUR IDENTITY (optional)</p>
+    <div id="rdy-id-loggedin" style="display:none;text-align:center">
+      <p style="font-size:0.65rem;color:#4caf50;letter-spacing:0.08rem">✓ Playing as <span id="rdy-id-name"></span></p>
+      <button class="rdy-id-btn" onclick="acctLogout();updateRdyIdentity()">LOG OUT</button>
+    </div>
+    <div id="rdy-id-loggedout">
+      <div class="rdy-id-row">
+        <input class="rdy-id-input" id="rdy-user" type="text" placeholder="USERNAME" maxlength="24" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+        <input class="rdy-id-input" id="rdy-pass" type="text" placeholder="PASSWORD" maxlength="64" autocomplete="off" data-lpignore="true" data-form-type="other" style="-webkit-text-security:disc;text-security:disc">
+        <button class="rdy-id-btn" onclick="rdyLogin()">LOG IN</button>
+      </div>
+      <p class="rdy-id-label" style="font-size:0.48rem;margin-top:2px">Leave blank to play as guest</p>
+    </div>
+    <p id="rdy-id-status"></p>
+  </div>
+</div>
+
+<!-- ── Settings screen ── -->
+<div id="settings-screen" class="screen" style="display:none">
+  <h1>CRAZY PONG</h1>
+  <p class="subtitle">SETTINGS</p>
+  <div style="height:0.3rem"></div>
+
+  <div class="stg-section">
+    <p class="stg-label">Power-Ups</p>
+    <div class="stg-grid stg-grid-3">
+      <button class="stg-btn on" id="stg-wide"    style="--col:#00e676" onclick="toggleSetting('powerups','wide')">WIDE</button>
+      <button class="stg-btn on" id="stg-curve"   style="--col:#40c4ff" onclick="toggleSetting('powerups','curve')">CURVE</button>
+      <button class="stg-btn on" id="stg-power"   style="--col:#ff9100" onclick="toggleSetting('powerups','power')">POWER</button>
+      <button class="stg-btn on" id="stg-split"   style="--col:#ffeb3b" onclick="toggleSetting('powerups','split')">SPLIT</button>
+      <button class="stg-btn on" id="stg-shrink"  style="--col:#ff5252" onclick="toggleSetting('powerups','shrink')">SHRINK</button>
+      <button class="stg-btn on" id="stg-reverse" style="--col:#e040fb" onclick="toggleSetting('powerups','reverse')">REVERSE</button>
+    </div>
+    <p class="stg-note">Toggled-off types won't spawn in-game</p>
+  </div>
+
+  <div class="stg-section">
+    <p class="stg-label">Visuals</p>
+    <div class="stg-grid stg-grid-col">
+      <button class="stg-btn on" id="stg-ballTrail"   style="--col:#aaaaaa" onclick="toggleSetting('visuals','ballTrail')">BALL TRAIL</button>
+      <button class="stg-btn on" id="stg-screenShake" style="--col:#aaaaaa" onclick="toggleSetting('visuals','screenShake')">SCREEN SHAKE</button>
+      <button class="stg-btn on" id="stg-particles"   style="--col:#aaaaaa" onclick="toggleSetting('visuals','particles')">PARTICLE BURST</button>
+    </div>
+  </div>
+
+  <button class="btn btn-back" onclick="showMode()">← BACK</button>
+</div>
+
+<script>
+// ── Audio ─────────────────────────────────────────────────────────────────────
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let volume = 0.4;
+document.getElementById('vol-slider').addEventListener('input', e => { volume = +e.target.value; });
+
+function beep(freq, dur, type = 'square') {
+  if (!volume) return;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(volume * 0.3, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + dur);
+}
+const sfx = {
+  paddle:   spd => beep(250 + spd * 8, 0.07),
+  wall:     ()  => beep(180, 0.05),
+  obstacle: ()  => beep(140, 0.10, 'sawtooth'),
+  score:    ()  => beep(120, 0.28, 'sawtooth'),
+  spawn:    ()  => { beep(80, 0.12, 'sawtooth'); setTimeout(() => beep(110, 0.20, 'sawtooth'), 110); },
+  win:      ()  => { beep(523,0.12); setTimeout(()=>beep(659,0.12),120); setTimeout(()=>beep(784,0.3),240); },
+  powerup:  ()  => { beep(440,0.08); setTimeout(()=>beep(660,0.08),80); setTimeout(()=>beep(880,0.15),160); },
+};
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const W = 560, H = 660;
+const PADDLE_W = 96, PADDLE_H = 12, PADDLE_MARGIN = 22;
+const BALL_R = 5;
+let   WINNING_SCORE   = 4;   // adjustable in settings (3–11)
+const BASE_SPEED      = 5.5;
+const SPEED_INC       = 0.2;
+const MAX_SPEED       = 13;
+const BASE_PAD_SPD    = 7;
+const PAD_SCALE       = 0.65;
+const HITS_PER_OBS    = 6;
+const MAX_OBS         = 4;
+const OBS_FADE        = 50;
+const MAX_TRAIL       = 32;
+const OBS_WALL_TOP    = 10;
+const OBS_WALL_BOT    = H - 10;
+const OBS_MAX_ANGVEL  = 0.10;
+const OBS_MAX_LINSPD  = 2.8;
+const OBS_MIN_LINSPD  = 0.35;
+const OBS_ANG_DAMP    = 0.988;
+const OBS_MIN_ANGSPD  = 0.018;
+const OBS_LIN_DAMP    = 0.9995;
+
+// ── Power-up constants ────────────────────────────────────────────────────────
+const PU_R             = 14;
+const PU_DURATION      = 420;   // 7 s at ~60 fps
+const PU_LIFETIME      = 780;   // 13 s before auto-despawn
+const PU_SPAWN_INTERVAL= 200;   // ~3.3 s between spawns → all 4 land within lifetime
+const MAX_POWERUPS     = 3;
+const PU_WIDE_SCALE    = 1.75;
+const PU_SHRINK_SCALE  = 0.50;  // opponent's paddle shrinks to 50%
+const PU_CURVE_FORCE   = 0.50;
+const PU_WALL_PAD      = 70;
+const PU_POWER_BOOST   = 5.5;
+const PU_POWER_MAX     = MAX_SPEED + PU_POWER_BOOST; // always full boost
+const GHOST_MAX_AGE    = 260;   // frames before ghost ball despawns
+
+// Colour / label lookup — includes both buff types and debuff state keys
+const PU_COLORS = {
+  wide:    '#00e676',
+  curve:   '#40c4ff',
+  power:   '#ff9100',
+  split:   '#ffeb3b',
+  shrink:  '#ff5252',
+  reverse: '#e040fb',
+  // debuff state keys (same colours as the power-up that caused them)
+  shrunk:   '#ff5252',
+  reversed: '#e040fb',
+};
+const PU_LABELS = { wide:'W', curve:'C', power:'P', split:'S', shrink:'X', reverse:'R', shrunk:'X', reversed:'R' };
+const PU_NAMES  = { wide:'WIDE', curve:'CURVE', power:'POWER', split:'SPLIT', shrink:'SHRINK', reverse:'REV', shrunk:'TINY!', reversed:'REV!' };
+
+// ── AI difficulty ─────────────────────────────────────────────────────────────
+const DIFF = {
+  easy:   { speedMult: 0.55 },
+  medium: { speedMult: 0.75 },
+  hard:   { speedMult: 0.97 },
+};
+const DIFF_COLOR = { easy: '#4caf50', medium: '#ffb300', hard: '#f44336' };
+
+// ── Multiplayer state ─────────────────────────────────────────────────────────
+let mpPeer = null, mpConn = null, mpMode = null; // 'host' | 'guest' | null
+let guestInputs = { l: false, r: false };        // host: last received from guest
+let mpGuestPaused = false;                        // guest: host has paused
+let mpHostReady = false, mpGuestReady = false;    // ready-screen state
+let chatMessages = [];                            // { from:'you'|'them', text }
+let chatOpen    = false;   // input bar is visible (typing mode)
+let chatVisible = false;   // message overlay is drawn (separate: auto-set by incoming msgs)
+let chatUnread  = 0;
+
+function generateCode() {
+  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  return Array.from({length:5}, ()=>c[Math.floor(Math.random()*c.length)]).join('');
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+const settings = {
+  powerups: { wide:true, curve:true, power:true, split:true, shrink:true, reverse:true },
+  visuals:  { ballTrail:true, screenShake:true, particles:true },
+};
+
+// Visual-effect state
+let ballTrail  = [];            // {x,y} ring buffer of recent ball positions
+let ghostTrail = [];            // same for the ghost ball
+let particles  = [];            // active burst particles
+let shakeAmt   = 0;            // pixels of shake remaining (decays each frame)
+
+function showSettings() { showOnly('settings-screen'); }
+
+function toggleSetting(group, key) {
+  settings[group][key] = !settings[group][key];
+  const btn = document.getElementById('stg-' + key);
+  btn.classList.toggle('on', settings[group][key]);
+}
+
+function setWinScore(n) {
+  WINNING_SCORE = n;
+  ['ai-pts-', 'twop-pts-', 'rdy-pts-'].forEach(prefix => {
+    for (let i = 3; i <= 11; i++) {
+      const el = document.getElementById(prefix + i);
+      if (el) el.classList.toggle('on', i === n);
+    }
+  });
+  // If on the pre-game ready screen, update the "FIRST TO N" label
+  const sc = document.getElementById('mp-ready-score');
+  if (sc && sc.textContent.startsWith('FIRST TO')) sc.textContent = 'FIRST TO ' + n;
+  // Host live-syncs the new score to guest
+  if (mpMode === 'host' && mpConn && mpConn.open) mpConn.send({ t: 'winscore', n });
+}
+
+// Guest-only: disable the ready-screen point buttons (host controls them)
+function setReadyPtsBtnsEnabled(enabled) {
+  for (let i = 3; i <= 11; i++) {
+    const el = document.getElementById('rdy-pts-' + i);
+    if (el) { el.disabled = !enabled; el.style.opacity = enabled ? '' : '0.35'; el.style.cursor = enabled ? '' : 'default'; }
+  }
+}
+
+// Spawn a burst of particles at (x,y) with the given CSS color string
+function spawnParticles(x, y, color, count = 14) {
+  if (!settings.visuals.particles) return;
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd   = 1.2 + Math.random() * 2.8;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd,
+      life: 1, decay: 0.028 + Math.random() * 0.022,
+      r: 1.8 + Math.random() * 2.2, color,
+    });
+  }
+}
+
+// ── Multiplayer navigation ─────────────────────────────────────────────────────
+function showMP()   { showOnly('mp-screen'); }
+function showJoin() {
+  showOnly('mp-join-screen');
+  document.getElementById('mp-join-status').textContent = '';
+  // Auto-focus the code input — opens keyboard on mobile too
+  setTimeout(() => document.getElementById('mp-code-input').focus(), 50);
+}
+
+function cancelMP() {
+  if (mpPeer) { mpPeer.destroy(); mpPeer = null; }
+  mpConn = null; mpMode = null; mpGuestUsername = null; mpGuestToken = null;
+  chatMessages = []; chatOpen = false; chatVisible = false; chatUnread = 0;
+  showOnly('mp-screen');
+}
+
+// ── Host game ──────────────────────────────────────────────────────────────────
+function hostGame() {
+  showOnly('mp-host-screen');
+  document.getElementById('mp-status').textContent = 'Creating room…';
+  const code = generateCode();
+  document.getElementById('mp-room-code').textContent = code;
+  mpMode = 'host';
+  if (mpPeer) { mpPeer.destroy(); mpPeer = null; }
+  mpPeer = new Peer('cpong-' + code, { debug: 0 });
+  mpPeer.on('open', () => {
+    document.getElementById('mp-status').textContent = 'Waiting for opponent…';
+  });
+  mpPeer.on('error', err => {
+    if (err.type === 'unavailable-id') { mpPeer.destroy(); hostGame(); return; }
+    document.getElementById('mp-status').textContent = 'Error: ' + err.type + '. Try again.';
+  });
+  mpPeer.on('connection', conn => {
+    mpConn = conn;
+    conn.on('open', () => {
+      // Both players go to ready screen before first game
+      mpHostReady = false; mpGuestReady = false;
+      conn.send({ t: 'preready', winScore: WINNING_SCORE });
+      showOnly('mp-ready-screen');
+      document.getElementById('mp-ready-winner').textContent = '';
+      document.getElementById('mp-ready-score').textContent  = 'FIRST TO ' + WINNING_SCORE;
+      document.getElementById('mp-ready-btn').disabled = false;
+      document.getElementById('mp-ready-btn').textContent = 'READY UP';
+      document.getElementById('mp-ready-btn').style.borderColor = '';
+      document.getElementById('mp-ready-btn').style.color = '';
+      updateReadyStatus();
+      setReadyPtsBtnsEnabled(true);
+    });
+    conn.on('data', d => {
+      if      (d.t === 'input')    { guestInputs.l = d.l; guestInputs.r = d.r; }
+      else if (d.t === 'ready')    { mpGuestReady = true; updateReadyStatus(); if (mpHostReady && mpGuestReady) startMPRematch(); }
+      else if (d.t === 'chat')     { receiveChatMessage(d.text); }
+      else if (d.t === 'identity') { mpGuestUsername = d.username; mpGuestToken = d.token; }
+    });
+    conn.on('close', handleDisconnect);
+    conn.on('error', handleDisconnect);
+  });
+}
+
+// ── Join game ──────────────────────────────────────────────────────────────────
+function joinGame() {
+  const code = document.getElementById('mp-code-input').value.trim().toUpperCase();
+  if (code.length < 5) { document.getElementById('mp-join-status').textContent = 'Enter a 5-letter code.'; return; }
+  document.getElementById('mp-join-status').textContent = 'Connecting…';
+  mpMode = 'guest';
+  if (mpPeer) { mpPeer.destroy(); mpPeer = null; }
+  mpPeer = new Peer({ debug: 0 });
+  mpPeer.on('open', () => {
+    mpConn = mpPeer.connect('cpong-' + code, { serialization: 'json' });
+    mpConn.on('open', () => {
+      document.getElementById('mp-join-status').textContent = 'Connected! Waiting for host…';
+    });
+    mpConn.on('data', d => {
+      if      (d.t === 'preready') {
+        // Host sent pre-game ready signal — guest goes to ready screen
+        if (d.winScore) { WINNING_SCORE = d.winScore; setWinScore(d.winScore); }
+        mpHostReady = false; mpGuestReady = false;
+        showOnly('mp-ready-screen');
+        document.getElementById('mp-ready-winner').textContent = '';
+        document.getElementById('mp-ready-score').textContent  = 'FIRST TO ' + WINNING_SCORE;
+        document.getElementById('mp-ready-btn').disabled = false;
+        document.getElementById('mp-ready-btn').textContent = 'READY UP';
+        document.getElementById('mp-ready-btn').style.borderColor = '';
+        document.getElementById('mp-ready-btn').style.color = '';
+        updateReadyStatus();
+        setReadyPtsBtnsEnabled(false);
+      }
+      else if (d.t === 'start')        startMPGameAsGuest();
+      else if (d.t === 'state')        applyNetState(d);
+      else if (d.t === 'gameover')     mpGameOver(d);
+      else if (d.t === 'pause')        { mpGuestPaused = true; }
+      else if (d.t === 'resume')       { mpGuestPaused = false; }
+      else if (d.t === 'hostready')    { mpHostReady = true; updateReadyStatus(); }
+      else if (d.t === 'startrematch') startMPGameAsGuest();
+      else if (d.t === 'chat')         { receiveChatMessage(d.text); }
+      else if (d.t === 'winscore')     { WINNING_SCORE = d.n; setWinScore(d.n);
+        // update score display if on ready screen
+        const sc = document.getElementById('mp-ready-score');
+        if (sc && sc.textContent.startsWith('FIRST TO')) sc.textContent = 'FIRST TO ' + d.n;
+      }
+    });
+    mpConn.on('close', handleDisconnect);
+    mpConn.on('error', () => {
+      document.getElementById('mp-join-status').textContent = 'Could not connect. Check the code.';
+      if (mpPeer) { mpPeer.destroy(); mpPeer = null; }
+      mpConn = null; mpMode = null;
+    });
+  });
+  mpPeer.on('error', err => {
+    document.getElementById('mp-join-status').textContent = 'Error: ' + err.type;
+  });
+}
+
+// ── Start MP game (host) ───────────────────────────────────────────────────────
+function startMPGame() {
+  labMode = false; mode = 'mp'; difficulty = null;
+  mpGuestPaused = false; chatOpen = false; chatVisible = false; chatUnread = 0;
+  document.getElementById('chat-input-bar').style.display = 'none';
+  const mobileChat = document.getElementById('mobile-chat');
+  if (mobileChat) mobileChat.textContent = '💬 CHAT';
+  showOnly('game-screen');
+  scoreT = scoreB = 0; resetRound(0);
+  gameState = 'playing'; paused = false;
+  if (animId) cancelAnimationFrame(animId);
+  if (mpConn) mpConn.send({ t: 'start' });
+  lastTime = performance.now();
+  animId = requestAnimationFrame(loop);
+}
+
+// ── Start MP game (guest) ──────────────────────────────────────────────────────
+function startMPGameAsGuest() {
+  labMode = false; mode = 'mp'; difficulty = null;
+  mpGuestPaused = false; chatOpen = false; chatVisible = false; chatUnread = 0;
+  document.getElementById('chat-input-bar').style.display = 'none';
+  const mobileChatG = document.getElementById('mobile-chat');
+  if (mobileChatG) mobileChatG.textContent = '💬 CHAT';
+  showOnly('game-screen');
+  scoreT = scoreB = 0; resetRound(0);
+  gameState = 'playing'; paused = false;
+  if (animId) cancelAnimationFrame(animId);
+  lastTime = performance.now();
+  animId = requestAnimationFrame(loop);
+}
+
+// ── Send state (host → guest every frame) ─────────────────────────────────────
+function sendState() {
+  if (!mpConn || !mpConn.open) return;
+  mpConn.send({
+    t: 'state',
+    b:  { x: ball.x, y: ball.y },
+    pT: { x: paddleT.x }, pB: { x: paddleB.x },
+    sT: scoreT, sB: scoreB,
+    vx: velX, vy: velY,
+    ef: activeEffects, cd: countdownTimer, gb: ghostBall,
+    pu: powerups.map(p => ({ cx:p.cx, cy:p.cy, type:p.type, age:p.age })),
+    ob: obstacles.map(o => ({ cx:o.cx, cy:o.cy, verts:o.verts, baseR:o.baseR, age:o.age, trail:o.trail })),
+  });
+}
+
+// ── Apply net state (guest) ────────────────────────────────────────────────────
+function applyNetState(d) {
+  if (!ball) ball = { x: d.b.x, y: d.b.y };
+  else { ball.x = d.b.x; ball.y = d.b.y; }
+  if (!paddleT) paddleT = { x: d.pT.x, y: PADDLE_MARGIN };
+  else paddleT.x = d.pT.x;
+  if (!paddleB) paddleB = { x: d.pB.x, y: H - PADDLE_MARGIN - PADDLE_H };
+  else paddleB.x = d.pB.x;
+  scoreT = d.sT; scoreB = d.sB;
+  velX = d.vx; velY = d.vy;
+  activeEffects = d.ef; countdownTimer = d.cd; ghostBall = d.gb;
+  powerups = (d.pu || []).map(p => ({ ...p, vx:0, vy:0 }));
+  obstacles = (d.ob || []).map(o => ({
+    cx:o.cx, cy:o.cy, verts:o.verts, baseR:o.baseR, boundR:o.baseR,
+    age:o.age, trail:o.trail, vx:0, vy:0, angle:0, angVel:0, baseVerts:[],
+  }));
+}
+
+// ── Send guest input (guest → host each frame) ────────────────────────────────
+function sendGuestInput() {
+  if (!mpConn || !mpConn.open) return;
+  mpConn.send({ t:'input',
+    l: !!(keys['ArrowLeft']  || keys['a'] || keys['A']),
+    r: !!(keys['ArrowRight'] || keys['d'] || keys['D']),
+  });
+}
+
+// ── MP game over (received by guest) ──────────────────────────────────────────
+function mpGameOver(d) {
+  gameState = 'over';
+  if (animId) { cancelAnimationFrame(animId); animId = null; }
+  sfx.win(); mpGuestPaused = false;
+  // Guest records their own result (host already recorded both, but guest records theirs in case host was a guest)
+  // d.w = winner string; guest is bottom paddle
+  if (acctUser) {
+    const guestWon = d.sB > d.sT; // guest is bottom
+    acctAPI('recordMultiplayerMatch', {
+      hostUsername: null, hostToken: null,
+      guestUsername: acctUser.username, guestToken: acctUser.token,
+      hostWon: !guestWon,
+    });
+  }
+  mpHostReady = false; mpGuestReady = false;
+  showOnly('mp-ready-screen');
+  document.getElementById('mp-ready-winner').textContent = d.w;
+  document.getElementById('mp-ready-score').textContent  = d.sT + '  ·  ' + d.sB;
+  document.getElementById('mp-ready-btn').disabled = false;
+  document.getElementById('mp-ready-btn').textContent = 'READY UP';
+  document.getElementById('mp-ready-btn').style.borderColor = '';
+  document.getElementById('mp-ready-btn').style.color = '';
+  updateReadyStatus();
+  // Guest cannot change points — only host controls them
+  setReadyPtsBtnsEnabled(false);
+}
+
+// ── Disconnect handler ─────────────────────────────────────────────────────────
+function handleDisconnect() {
+  if (document.getElementById('mp-disconnect-msg').style.display === 'block') return;
+  const overlay = document.getElementById('mp-disconnect-msg');
+  // Center on whichever game screen is currently visible; fall back to canvas
+  const screenIds = ['game-screen','mp-ready-screen','mp-host-screen','mp-join-screen'];
+  let ref = canvas.getBoundingClientRect();
+  for (const id of screenIds) {
+    const el = document.getElementById(id);
+    if (el && el.style.display !== 'none') { ref = el.getBoundingClientRect(); break; }
+  }
+  overlay.style.left = (ref.left + ref.width  / 2) + 'px';
+  overlay.style.top  = (ref.top  + ref.height / 2) + 'px';
+  if (animId) { cancelAnimationFrame(animId); animId = null; }
+  gameState = 'over';
+
+  if (mpMode === 'host') {
+    // Guest left — keep the room alive so they (or someone else) can rejoin
+    overlay.innerHTML = 'OPPONENT LEFT<br><span style="font-size:0.7rem;letter-spacing:0.1rem">Returning to room…</span>';
+    overlay.style.display = 'block';
+    mpConn = null;
+    mpHostReady = false; mpGuestReady = false;
+    mpGuestPaused = false;
+    chatMessages = []; chatOpen = false; chatVisible = false; chatUnread = 0;
+    document.getElementById('chat-input-bar').style.display = 'none';
+    setTimeout(() => {
+      overlay.style.display = 'none';
+      // Restore default message text for future disconnects
+      overlay.innerHTML = 'CONNECTION LOST<br><span style="font-size:0.7rem;letter-spacing:0.1rem">Returning to menu…</span>';
+      showOnly('mp-host-screen');
+      document.getElementById('mp-status').textContent = 'Waiting for opponent…';
+    }, 2000);
+  } else {
+    // Host left (or unknown) — guest has no room to return to; go to menu
+    overlay.style.display = 'block';
+    setTimeout(() => {
+      overlay.style.display = 'none';
+      if (mpPeer) { mpPeer.destroy(); mpPeer = null; }
+      mpConn = null; mpMode = null;
+      chatMessages = []; chatOpen = false; chatVisible = false; chatUnread = 0;
+      document.getElementById('chat-input-bar').style.display = 'none';
+      showOnly('mode-screen');
+    }, 2500);
+  }
+}
+
+// ── MP Chat ───────────────────────────────────────────────────────────────────
+function positionInputBar() {
+  const bar = document.getElementById('chat-input-bar');
+
+  // On the ready screen, anchor below the "Press T to chat" hint text
+  const hint = document.getElementById('mp-ready-chat-hint');
+  if (hint && document.getElementById('mp-ready-screen').style.display !== 'none') {
+    const hr = hint.getBoundingClientRect();
+    bar.style.left  = hr.left + 'px';
+    bar.style.top   = (hr.bottom + 8) + 'px';
+    bar.style.width = Math.max(240, hr.width) + 'px';
+    return;
+  }
+
+  // In-game: anchor below the canvas chat messages
+  const rect = canvas.getBoundingClientRect();
+  const msgCount = Math.min(chatMessages.length, 5);
+  // drawChatOverlay compensates for CSS scaling so visual positions are fixed screen-space pixels.
+  // 12px = top margin, 19px per line, 8px gap before input bar.
+  const offsetY = 12 + msgCount * 19 + 8;
+  bar.style.left  = (rect.left + 8) + 'px';
+  bar.style.top   = (rect.top  + offsetY) + 'px';
+  bar.style.width = '';
+}
+
+function toggleChat() {
+  // Open/close is based on chatOpen only — chatVisible may already be true from
+  // an incoming message and must not block opening or accidentally trigger a close.
+  chatOpen = !chatOpen;
+  const bar = document.getElementById('chat-input-bar');
+  if (chatOpen) {
+    chatVisible = true;   // keep overlay on whenever input is open
+    bar.style.display = 'flex';
+    positionInputBar();
+    chatUnread = 0;
+    const btn = document.getElementById('mobile-chat');
+    if (btn) btn.textContent = '💬 CHAT';
+    if (!touchMode) setTimeout(() => document.getElementById('mp-chat-input').focus(), 50);
+  } else {
+    chatVisible = false;
+    bar.style.display = 'none';
+    document.getElementById('mp-chat-input').blur();
+  }
+}
+
+function sendChatMessage() {
+  const input = document.getElementById('mp-chat-input');
+  const text  = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  chatMessages.push({ from: 'you', text });
+  if (mpConn && mpConn.open) mpConn.send({ t: 'chat', text });
+  if (chatOpen) positionInputBar();  // reposition after message count changes
+}
+
+function receiveChatMessage(text) {
+  chatMessages.push({ from: 'them', text });
+  // Always show the message overlay so the incoming message is seen
+  chatVisible = true;
+  if (chatOpen) {
+    positionInputBar();  // reposition if input bar is also open
+  } else {
+    // Show unread badge on the CHAT button but don't open the input bar
+    chatUnread++;
+    const btn = document.getElementById('mobile-chat');
+    if (btn) btn.textContent = `💬 CHAT (${chatUnread})`;
+  }
+}
+
+// Chat messages are drawn directly on the canvas each frame by drawChatOverlay()
+function drawChatOverlay() {
+  if (!mpMode || !chatVisible || chatMessages.length === 0) return;
+  const msgs = chatMessages.slice(-5);
+  // Use physical canvas coordinates (700×825); font in px compensates for CSS scaling
+  const cssScale = (canvas.offsetWidth || 700) / 700;
+  const fontSize = Math.round(11 / cssScale);   // target ~11px visible size
+  const lineH    = Math.round(19 / cssScale);
+  const startX   = Math.round(10 / cssScale);
+  const startY   = Math.round(12 / cssScale);
+  const maxW     = Math.round(300 / cssScale);
+
+  cx.save();
+  cx.font          = `${fontSize}px "Courier New", monospace`;
+  cx.textBaseline  = 'top';
+  cx.textAlign     = 'left';
+  cx.shadowBlur    = 0;
+  cx.globalAlpha   = 1;
+
+  msgs.forEach((m, i) => {
+    const prefix = m.from === 'you' ? 'YOU: ' : 'OPP: ';
+    const label  = (prefix + m.text).substring(0, 52);
+    const tw     = Math.min(cx.measureText(label).width, maxW);
+    const ry     = startY + i * lineH;
+
+    // Semi-transparent dark background behind each line
+    cx.fillStyle = 'rgba(0,0,0,0.52)';
+    cx.fillRect(startX - 3, ry - 2, tw + 8, fontSize + 5);
+
+    // Text colour: blue-tinted for own messages, grey for opponent
+    cx.fillStyle = m.from === 'you'
+      ? 'rgba(150,210,255,0.90)'
+      : 'rgba(195,195,195,0.85)';
+
+    // Clip so long text doesn't overflow the bg rect
+    cx.save();
+    cx.beginPath();
+    cx.rect(startX - 3, ry - 2, maxW + 8, fontSize + 5);
+    cx.clip();
+    cx.fillText(label, startX, ry);
+    cx.restore();
+  });
+
+  cx.restore();
+}
+
+// ── Host-pause (MP host only, ESC key or mobile button) ───────────────────────
+function toggleMPPause() {
+  if (paused) {
+    countdownTimer = 90;  // reuse existing 3-2-1 countdown
+    paused = false;
+    if (mpConn && mpConn.open) mpConn.send({ t: 'resume' });
+  } else {
+    paused = true;
+    if (mpConn && mpConn.open) mpConn.send({ t: 'pause' });
+  }
+}
+
+// ── MP Ready screen ───────────────────────────────────────────────────────────
+function mpClickReady() {
+  const btn = document.getElementById('mp-ready-btn');
+  btn.disabled = true;
+  btn.textContent = 'READY ✓';
+  btn.style.borderColor = '#4caf50'; btn.style.color = '#4caf50';
+  if (mpMode === 'host') {
+    mpHostReady = true;
+    if (mpConn && mpConn.open) mpConn.send({ t: 'hostready' });
+    updateReadyStatus();
+    if (mpHostReady && mpGuestReady) startMPRematch();
+  } else {
+    if (mpConn && mpConn.open) {
+      mpConn.send({ t: 'ready' });
+      // Send identity so host can record match stats for both players
+      mpConn.send({ t: 'identity', username: acctUser ? acctUser.username : null, token: acctUser ? acctUser.token : null });
+    }
+  }
+}
+
+function updateReadyStatus() {
+  const el = document.getElementById('mp-ready-status');
+  if (!el) return;
+  const myReady  = mpMode === 'host' ? mpHostReady  : mpGuestReady;
+  const oppReady = mpMode === 'host' ? mpGuestReady : mpHostReady;
+  el.innerHTML =
+    `<span style="color:${myReady  ? '#4caf50' : '#555'}">YOU: ${myReady  ? 'READY ✓' : 'WAITING…'}</span>` +
+    `&nbsp;&nbsp;|&nbsp;&nbsp;` +
+    `<span style="color:${oppReady ? '#4caf50' : '#555'}">OPPONENT: ${oppReady ? 'READY ✓' : 'WAITING…'}</span>`;
+}
+
+function startMPRematch() {
+  mpHostReady = false; mpGuestReady = false;
+  if (mpConn && mpConn.open) mpConn.send({ t: 'startrematch' });
+  startMPGame();
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let mode, difficulty, gameState, paused, labMode = false;
+
+// ── Lab toggle state ──────────────────────────────────────────────────────────
+const labToggled = {
+  top: { wide:false, curve:false, power:false, split:false, shrink:false, reverse:false },
+  bot: { wide:false, curve:false, power:false, split:false, shrink:false, reverse:false },
+};
+function applyLabToggles() {
+  activeEffects.top.wide    = labToggled.top.wide    ? 9999 : 0;
+  activeEffects.top.curve   = labToggled.top.curve   ? 9999 : 0;
+  activeEffects.top.power   = labToggled.top.power   ? 9999 : 0;
+  activeEffects.top.split   = labToggled.top.split   ? 9999 : 0;
+  activeEffects.bottom.shrunk   = labToggled.top.shrink  ? 9999 : 0;
+  activeEffects.bottom.reversed = labToggled.top.reverse ? 9999 : 0;
+  activeEffects.bottom.wide   = labToggled.bot.wide   ? 9999 : 0;
+  activeEffects.bottom.curve  = labToggled.bot.curve  ? 9999 : 0;
+  activeEffects.bottom.power  = labToggled.bot.power  ? 9999 : 0;
+  activeEffects.bottom.split  = labToggled.bot.split  ? 9999 : 0;
+  activeEffects.top.shrunk    = labToggled.bot.shrink  ? 9999 : 0;
+  activeEffects.top.reversed  = labToggled.bot.reverse ? 9999 : 0;
+}
+function labToggle(side, key) {
+  labToggled[side][key] = !labToggled[side][key];
+  const btn  = document.getElementById(`lbtn-${side}-${key}`);
+  const pill = btn.querySelector('.ppill');
+  if (labToggled[side][key]) { btn.classList.add('on'); pill.textContent = 'ON'; }
+  else                       { btn.classList.remove('on'); pill.textContent = 'OFF'; }
+  syncMobileLabPills();
+}
+function labResetAll() {
+  for (const side of ['top','bot'])
+    for (const key of Object.keys(labToggled[side]))
+      if (labToggled[side][key]) labToggle(side, key);
+  curveSpin = 0; ghostBall = null;
+}
+function labForceObstacle() {
+  const obs = spawnObstacle();
+  if (obs) { obstacles.push(obs); sfx.spawn(); }
+}
+let countdownTimer = 0; // frames remaining before ball moves
+let scoreT = 0, scoreB = 0;
+let ball, velX, velY, ballSpeed;
+let paddleT, paddleB;
+let keys = {}, animId, lastTime = 0;
+let hitCount = 0, obstacles = [];
+let aiReverseDelay = 0;      // frames remaining before AI reacts to reverse
+let aiReverseConfused = false; // currently going wrong way due to reverse
+let aiGhostLocked = false;    // currently chasing ghost ball
+let aiGhostCheckTimer = 0;    // frames until AI re-evaluates ghost vs real
+
+// ── Power-up state ────────────────────────────────────────────────────────────
+let powerups     = [];
+let puSpawnTimer = 0;
+let lastHitter   = 'bottom';
+let curveSpin    = 0;
+let normalSpeed  = BASE_SPEED;
+let ghostBall    = null;   // { x, y, vx, vy, age }
+
+function freshEffects() {
+  return {
+    top:    { wide:0, curve:0, power:0, split:0, shrunk:0, reversed:0 },
+    bottom: { wide:0, curve:0, power:0, split:0, shrunk:0, reversed:0 },
+  };
+}
+let activeEffects = freshEffects();
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const clamp = (v,lo,hi) => Math.max(lo, Math.min(hi, v));
+
+function getPaddleW(isTop) {
+  const side = isTop ? 'top' : 'bottom';
+  const hasShrunk = activeEffects[side].shrunk > 0;
+  const hasWide   = activeEffects[side].wide   > 0;
+  // Both active → they cancel out to normal size
+  if (hasShrunk && hasWide) return PADDLE_W;
+  if (hasShrunk) return Math.round(PADDLE_W * PU_SHRINK_SCALE);
+  if (hasWide)   return Math.round(PADDLE_W * PU_WIDE_SCALE);
+  return PADDLE_W;
+}
+
+// ── Screens ───────────────────────────────────────────────────────────────────
+function showOnly(id) {
+  currentScreen = id;
+  SCREENS.forEach(s => screenEls[s].style.display = s===id ? 'flex' : 'none');
+  // Lab sidebar — hidden in touch mode
+  document.getElementById('lab-sidebar').classList.toggle('visible', id==='game-screen' && labMode && !touchMode);
+  document.getElementById('pause-hint').style.display = (labMode || touchMode) ? 'none' : '';
+  // Touch overlay + quit button
+  const inGame = id === 'game-screen';
+  const showTouch = inGame && touchMode;
+  document.getElementById('touch-controls').style.display = showTouch ? 'flex' : 'none';
+  // Mobile button row — sits above canvas in layout flow
+  const inMPArea = (id === 'game-screen' || id === 'mp-ready-screen') && mpMode;
+  document.getElementById('mobile-btn-row').style.display  = showTouch ? 'flex' : 'none';
+  document.getElementById('mobile-quit').style.display     = showTouch ? 'block' : 'none';
+  document.getElementById('mobile-chat').style.display     = (showTouch && inMPArea) ? 'block' : 'none';
+  document.getElementById('mobile-pause').style.display    = (showTouch && mpMode === 'host' && inGame) ? 'block' : 'none';
+  if (!inMPArea) { chatOpen = false; chatVisible = false; document.getElementById('chat-input-bar').style.display = 'none'; }
+  if (inGame) { scaleGame(); setTimeout(scaleGame, 50); }
+  // Show mobile lab panel only in touch mode + lab mode
+  const mobileLabPanel = document.getElementById('lab-mobile-panel');
+  if (mobileLabPanel) mobileLabPanel.classList.toggle('lab-visible', id === 'game-screen' && labMode);
+  // Show desktop lab bottom bar when in lab mode (non-touch)
+  const desktopLabBottom = document.getElementById('lab-desktop-bottom');
+  if (desktopLabBottom) desktopLabBottom.style.display = (id === 'game-screen' && labMode && !touchMode) ? 'flex' : 'none';
+  setTimeout(reportHeight, 100);
+}
+const showMode       = () => { labMode = false; showOnly('mode-screen'); };
+const showDifficulty = () => showOnly('difficulty-screen');
+
+// ── Start / reset ─────────────────────────────────────────────────────────────
+function startGame(m, diff) {
+  labMode = false; mode = m; difficulty = diff;
+  showOnly('game-screen');
+  scoreT = scoreB = 0;
+  resetRound(0);
+  gameState = 'playing'; paused = false;
+  if (animId) cancelAnimationFrame(animId);
+  lastTime = performance.now();
+  animId = requestAnimationFrame(loop);
+}
+
+function setLabDiff(diff) {
+  difficulty = diff;
+  ['easy','medium','hard'].forEach(d => {
+    const deskBtn = document.getElementById('lab-diff-' + d);
+    const mobBtn  = document.getElementById('mb-diff-' + d);
+    if (deskBtn) deskBtn.classList.toggle('active', d === diff);
+    if (mobBtn)  mobBtn.classList.toggle('active', d === diff);
+  });
+  aiReverseDelay = 0; aiReverseConfused = false;
+  aiGhostLocked = false; aiGhostCheckTimer = 0;
+}
+
+function switchLabTab(tab) {
+  ['you','ai','give'].forEach(t => {
+    document.getElementById('lab-tab-' + t).classList.toggle('active', t === tab);
+    document.getElementById('lab-tab-content-' + t).style.display = t === tab ? 'flex' : 'none';
+  });
+}
+
+// Sync mobile pill states with desktop (called after labToggle updates desktop btns)
+function syncMobileLabPills() {
+  const map = [
+    ['lbtn-top-wide','mb-top-wide'],['lbtn-top-curve','mb-top-curve'],
+    ['lbtn-top-power','mb-top-power'],['lbtn-top-split','mb-top-split'],
+    ['lbtn-top-shrink','mb-top-shrink'],['lbtn-top-reverse','mb-top-reverse'],
+    ['lbtn-bot-wide','mb-bot-wide'],['lbtn-bot-curve','mb-bot-curve'],
+    ['lbtn-bot-power','mb-bot-power'],['lbtn-bot-split','mb-bot-split'],
+    ['lbtn-bot-shrink','mb-bot-shrink'],['lbtn-bot-reverse','mb-bot-reverse'],
+  ];
+  map.forEach(([desk, mob]) => {
+    const dBtn = document.getElementById(desk);
+    const mBtn = document.getElementById(mob);
+    if (!dBtn || !mBtn) return;
+    const pill = mBtn.querySelector('.ppill');
+    const dPill = dBtn.querySelector('.ppill');
+    if (pill && dPill) {
+      pill.textContent = dPill.textContent;
+      mBtn.classList.toggle('on', dBtn.classList.contains('on'));
+    }
+  });
+}
+
+function startLab() {
+  labMode = true; mode = 'ai'; difficulty = 'medium';
+  labResetAll();
+  showOnly('game-screen');
+  scoreT = scoreB = 0;
+  resetRound(0);
+  gameState = 'playing'; paused = false;
+  if (animId) cancelAnimationFrame(animId);
+  lastTime = performance.now();
+  animId = requestAnimationFrame(loop);
+}
+
+function rematch() {
+  showOnly('game-screen'); scoreT = scoreB = 0; resetRound(0);
+  gameState = 'playing'; paused = false;
+  if (animId) cancelAnimationFrame(animId);
+  lastTime = performance.now(); animId = requestAnimationFrame(loop);
+}
+
+function backToMenu() {
+  if (mpPeer) { mpPeer.destroy(); mpPeer = null; }
+  mpConn = null; mpMode = null;
+  chatMessages = []; chatOpen = false; chatVisible = false; chatUnread = 0;
+  document.getElementById('chat-input-bar').style.display = 'none';
+  showOnly('mode-screen');
+  if (animId) { cancelAnimationFrame(animId); animId = null; }
+}
+
+// ── Quit confirmation ─────────────────────────────────────────────────────────
+let _quitWasPaused = false;
+function showQuitConfirm() {
+  const dlg = document.getElementById('quit-confirm');
+  if (dlg.style.display === 'flex') return;
+  // Pause the game while the dialog is open
+  _quitWasPaused = paused;
+  if (gameState === 'playing' && !paused) {
+    if (mpMode === 'host') { paused = true; if (mpConn && mpConn.open) mpConn.send({ t: 'pause' }); }
+    else if (!mpMode)      { paused = true; }
+  }
+  // Center over the canvas, not the viewport
+  const rect = canvas.getBoundingClientRect();
+  dlg.style.left = (rect.left + rect.width  / 2) + 'px';
+  dlg.style.top  = (rect.top  + rect.height / 2) + 'px';
+  dlg.style.display = 'flex';
+}
+function confirmQuit() {
+  document.getElementById('quit-confirm').style.display = 'none';
+  paused = false;
+  backToMenu();
+}
+function cancelQuit() {
+  document.getElementById('quit-confirm').style.display = 'none';
+  // Restore pre-dialog pause state
+  if (!_quitWasPaused && gameState === 'playing') {
+    if (mpMode === 'host') { paused = false; countdownTimer = 90; if (mpConn && mpConn.open) mpConn.send({ t: 'resume' }); }
+    else if (!mpMode)      { paused = false; }
+  }
+}
+
+function resetRound(dir) {
+  ballSpeed = BASE_SPEED; hitCount = 0; obstacles = [];
+  aiReverseDelay = 0; aiReverseConfused = false; aiGhostLocked = false; aiGhostCheckTimer = 0;
+  powerups = []; puSpawnTimer = 0; curveSpin = 0; lastHitter = 'bottom';
+  normalSpeed = BASE_SPEED; ghostBall = null; countdownTimer = labMode ? 0 : 90;
+  ballTrail = []; ghostTrail = []; particles = []; shakeAmt = 0;
+  activeEffects = freshEffects();
+  paddleT = { x: W/2 - PADDLE_W/2, y: PADDLE_MARGIN };
+  paddleB = { x: W/2 - PADDLE_W/2, y: H - PADDLE_MARGIN - PADDLE_H };
+  ball    = { x: W/2, y: H/2 };
+  const sd = dir===0 ? (Math.random()<0.5?1:-1) : dir;
+  const sa = (Math.random()*0.45+0.1) * (Math.random()<0.5?1:-1);
+  velY = sd * ballSpeed * Math.cos(sa);
+  velX = ballSpeed * Math.sin(sa);
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const chatFocused = document.activeElement && document.activeElement.id === 'mp-chat-input';
+  if (chatFocused) {
+    if (e.key === 'Enter')  { e.preventDefault(); sendChatMessage(); }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      document.activeElement.blur();
+      chatOpen = false; chatVisible = false;
+      document.getElementById('chat-input-bar').style.display = 'none';
+    }
+    return; // block all game keys while typing
+  }
+  keys[e.key] = true;
+  if (e.key === ' ') {
+    e.preventDefault();
+    if (gameState === 'playing') {
+      if (mpMode === 'host') toggleMPPause();
+      else if (!mpMode) paused = !paused;
+    }
+  }
+  if (e.key === 'Escape' && gameState === 'playing') showQuitConfirm();
+  if ((e.key === 't' || e.key === 'T') && mpMode && !chatOpen) { e.preventDefault(); toggleChat(); }
+  if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// ── Loop ──────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const cx     = canvas.getContext('2d');
+
+// Cache all screen elements once — avoids repeated getElementById calls
+const SCREENS = ['mode-screen','difficulty-screen','2p-screen','game-screen',
+  'game-over-screen','mp-screen','mp-host-screen','mp-join-screen',
+  'settings-screen','mp-ready-screen'];
+const screenEls = {};
+SCREENS.forEach(id => screenEls[id] = document.getElementById(id));
+let currentScreen = 'mode-screen';
+
+// ── Input mode: touch vs keyboard — switches dynamically ──────────────────────
+// true = touch mode (shows touch controls, scales canvas)
+// false = keyboard mode (full desktop layout)
+let touchMode = ('ontouchstart' in window) && window.innerWidth < 800;
+
+function setTouchMode(val) {
+  if (touchMode === val) return;
+  touchMode = val;
+  document.body.classList.toggle('touch-mode', touchMode);
+  scaleGame();
+  // Re-apply UI visibility for whatever screen is currently showing
+  if (currentScreen) showOnly(currentScreen);
+}
+
+// Switch to touch mode on any touch; switch to keyboard mode on any key
+document.addEventListener('touchstart', () => setTouchMode(true),  { passive: true });
+document.addEventListener('keydown',    e => {
+  // Don't switch modes for modifier-only keys
+  if (!['Shift','Control','Alt','Meta','CapsLock'].includes(e.key)) setTouchMode(false);
+}, { capture: true });
+
+// ── Mobile: scale canvas to fit screen ────────────────────────────────────────
+function scaleGame() {
+  const canvasNativeW = 700;
+  const canvasNativeH = 825;
+
+  const isMobile = touchMode || window.innerWidth < 600;
+
+  let s;
+  if (isMobile) {
+    // Mobile: scale to fit a ~390px wide phone screen
+    // Canvas becomes ~370×436px, leaving room for title + buttons
+    const mobileW = Math.min(window.innerWidth - 16, 370);
+    s = mobileW / canvasNativeW;
+  } else {
+    // Desktop: iframe is 708×1095px
+    // Canvas at ~640×754 leaves ~340px for title, buttons, padding
+    s = 580 / canvasNativeW;
+  }
+
+  canvas.style.width  = Math.round(canvasNativeW * s) + 'px';
+  canvas.style.height = Math.round(canvasNativeH * s) + 'px';
+}
+window.addEventListener('resize', () => { scaleGame(); reportHeight(); if (chatOpen) positionInputBar(); });
+// Apply initial state
+document.body.classList.toggle('touch-mode', touchMode);
+scaleGame();
+setTimeout(scaleGame, 100); // re-run after layout settles
+
+// Tell Google Sites iframe how tall the content is so it can resize
+function reportHeight() {
+  const h = document.documentElement.scrollHeight;
+  window.parent.postMessage({ type: 'resize', height: h }, '*');
+  // Also try the google sites specific format
+  window.parent.postMessage(JSON.stringify({ sentinel: 'amp', type: 'embed-size', height: h }), '*');
+}
+// Report on load with staggered delays to catch late layout shifts
+[100, 500, 1000].forEach(t => setTimeout(reportHeight, t));
+
+// Touch controls
+const tcLeft  = document.getElementById('touch-left');
+const tcRight = document.getElementById('touch-right');
+function setTouch(l, r) {
+  if (mode === '2p') {
+    // 2P: touch controls bottom paddle — Arrow keys only
+    keys['ArrowLeft']  = l;
+    keys['ArrowRight'] = r;
+    keys['a'] = keys['A'] = keys['d'] = keys['D'] = false;
+  } else {
+    // AI / MP guest: touch controls top/own paddle — A/D keys only
+    keys['a'] = keys['A'] = l;
+    keys['d'] = keys['D'] = r;
+    keys['ArrowLeft'] = keys['ArrowRight'] = false;
+  }
+}
+tcLeft.addEventListener('touchstart',  e => { e.preventDefault(); setTouch(true,  false); }, { passive: false });
+tcLeft.addEventListener('touchend',    e => { e.preventDefault(); setTouch(false, keys['ArrowRight']); }, { passive: false });
+tcLeft.addEventListener('touchcancel', e => { e.preventDefault(); setTouch(false, keys['ArrowRight']); }, { passive: false });
+tcRight.addEventListener('touchstart',  e => { e.preventDefault(); setTouch(keys['ArrowLeft'], true);  }, { passive: false });
+tcRight.addEventListener('touchend',    e => { e.preventDefault(); setTouch(keys['ArrowLeft'], false); }, { passive: false });
+tcRight.addEventListener('touchcancel', e => { e.preventDefault(); setTouch(keys['ArrowLeft'], false); }, { passive: false });
+
+function loop(ts) {
+  animId = requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 16.67, 2);
+  lastTime = ts;
+  if (mpMode === 'guest') {
+    // Guest: send input, render received state — no simulation
+    sendGuestInput();
+    draw();
+  } else {
+    if (!paused && gameState==='playing') update(dt);
+    if (mpMode === 'host') sendState();
+    draw();
+  }
+}
+
+const padSpeed = () => BASE_PAD_SPD + (ballSpeed - BASE_SPEED) * PAD_SCALE;
+
+function updateTrail(trail, x, y) {
+  if (settings.visuals.ballTrail) {
+    trail.push({ x, y });
+    if (trail.length > 14) trail.shift();
+  } else if (trail.length) {
+    trail.length = 0;
+  }
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (labMode) applyLabToggles(); // keep effects infinite while toggled on
+  const ps  = padSpeed();
+  const pwT = getPaddleW(true);
+  const pwB = getPaddleW(false);
+
+  // Player 1 (top) movement — reverse flips A/D and arrow keys
+  const topRev = activeEffects.top.reversed > 0 ? -1 : 1;
+  if (keys['a']||keys['A']) paddleT.x -= topRev * ps*dt;
+  if (keys['d']||keys['D']) paddleT.x += topRev * ps*dt;
+
+  if (mode==='2p') {
+    const botRev = activeEffects.bottom.reversed > 0 ? -1 : 1;
+    if (keys['ArrowLeft'])  paddleB.x -= botRev * ps*dt;
+    if (keys['ArrowRight']) paddleB.x += botRev * ps*dt;
+  } else if (mode==='mp' && mpMode==='host') {
+    // Guest's raw inputs arrive via guestInputs; apply reverse effect server-side
+    const botRev = activeEffects.bottom.reversed > 0 ? -1 : 1;
+    if (guestInputs.l) paddleB.x -= botRev * ps*dt;
+    if (guestInputs.r) paddleB.x += botRev * ps*dt;
+  } else {
+    if (keys['ArrowLeft'])  paddleT.x -= topRev * ps*dt;
+    if (keys['ArrowRight']) paddleT.x += topRev * ps*dt;
+    aiMove(dt, ps);
+  }
+  paddleT.x = clamp(paddleT.x, 0, W - pwT);
+  paddleB.x = clamp(paddleB.x, 0, W - pwB);
+
+  // Countdown — hold ball until timer expires
+  if (countdownTimer > 0) { countdownTimer -= dt; return; }
+
+  // Ball movement
+  ball.x += velX*dt;
+  ball.y += velY*dt;
+  if (ball.x-BALL_R <= 0) { ball.x = BALL_R;   velX =  Math.abs(velX); sfx.wall(); }
+  if (ball.x+BALL_R >= W) { ball.x = W-BALL_R; velX = -Math.abs(velX); sfx.wall(); }
+
+  // Curve spin — pure direction change, speed preserved
+  if (curveSpin !== 0) {
+    const decay = Math.pow(0.993, dt);
+    velX += curveSpin * dt;
+    const spd = Math.sqrt(velX*velX + velY*velY);
+    if (spd > 0) { velX = velX/spd * ballSpeed; velY = velY/spd * ballSpeed; }
+    const minVY = ballSpeed * 0.25;
+    if (Math.abs(velY) < minVY) {
+      const sy = velY >= 0 ? 1 : -1;
+      velY = sy * minVY;
+      velX = Math.sign(velX) * Math.sqrt(Math.max(0, ballSpeed*ballSpeed - minVY*minVY));
+    }
+    curveSpin *= decay;
+    if (Math.abs(curveSpin) < 0.004) curveSpin = 0;
+    // Reuse decay for ghost ball if active
+    if (ghostBall && ghostBall.curveSpin) ghostBall.curveSpin *= decay;
+  }
+
+  if (hitPaddle(paddleT,'top',-1))    sfx.paddle(ballSpeed);
+  if (hitPaddle(paddleB,'bottom',1)) sfx.paddle(ballSpeed);
+
+  // Obstacles
+  for (const obs of obstacles) {
+    stepObstacle(obs);
+    if (ballHitsObstacle(obs)) { sfx.obstacle(); if (settings.visuals.screenShake) shakeAmt = Math.max(shakeAmt, 5); }
+  }
+
+  // Ball trail
+  updateTrail(ballTrail, ball.x, ball.y);
+
+  // Particles tick
+  particles = particles.filter(p => {
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vy += 0.07 * dt; // slight gravity
+    p.vx *= 0.97; p.vy *= 0.97;
+    p.life -= p.decay * dt;
+    return p.life > 0;
+  });
+
+  // Ghost ball update
+  if (ghostBall) {
+    updateTrail(ghostTrail, ghostBall.x, ghostBall.y);
+    ghostBall.age += dt;
+    ghostBall.x   += ghostBall.vx * dt;
+    ghostBall.y   += ghostBall.vy * dt;
+    // CURVE+SPLIT combo: ghost has its own opposite curveSpin
+    if (ghostBall.curveSpin) {
+      ghostBall.vx += ghostBall.curveSpin * dt;
+      const gs = Math.sqrt(ghostBall.vx*ghostBall.vx + ghostBall.vy*ghostBall.vy);
+      if (gs > 0) { ghostBall.vx = ghostBall.vx/gs * ghostBall.speed; ghostBall.vy = ghostBall.vy/gs * ghostBall.speed; }
+      if (Math.abs(ghostBall.curveSpin) < 0.004) ghostBall.curveSpin = 0;
+    }
+    if (ghostBall.x - BALL_R < 0)  { ghostBall.x = BALL_R;   ghostBall.vx =  Math.abs(ghostBall.vx); }
+    if (ghostBall.x + BALL_R > W)  { ghostBall.x = W-BALL_R; ghostBall.vx = -Math.abs(ghostBall.vx); }
+    if (ghostBall.y < PADDLE_MARGIN || ghostBall.y > H - PADDLE_MARGIN || ghostBall.age >= GHOST_MAX_AGE) {
+      ghostBall = null; ghostTrail = [];
+    }
+  }
+
+  // Power-up spawning — only begins after the first asteroid is on the field
+  if (!labMode && obstacles.length > 0) puSpawnTimer += dt;
+  if (puSpawnTimer >= PU_SPAWN_INTERVAL) {
+    if (powerups.length < MAX_POWERUPS) {
+      puSpawnTimer = 0;
+      const pu = spawnPowerup();
+      if (pu) powerups.push(pu);
+    } else {
+      puSpawnTimer = PU_SPAWN_INTERVAL; // cap — don't bank time while at max
+    }
+  }
+
+  // Power-up movement & collection
+  powerups = powerups.filter(pu => {
+    pu.age += dt;
+    pu.cx  += pu.vx * dt;
+    pu.cy  += pu.vy * dt;
+    if (pu.cx - PU_R < 0)               { pu.cx = PU_R;               pu.vx =  Math.abs(pu.vx); }
+    if (pu.cx + PU_R > W)               { pu.cx = W - PU_R;           pu.vx = -Math.abs(pu.vx); }
+    if (pu.cy - PU_R < PU_WALL_PAD)     { pu.cy = PU_WALL_PAD + PU_R; pu.vy =  Math.abs(pu.vy); }
+    if (pu.cy + PU_R > H - PU_WALL_PAD) { pu.cy = H - PU_WALL_PAD - PU_R; pu.vy = -Math.abs(pu.vy); }
+    const dx = ball.x - pu.cx, dy = ball.y - pu.cy;
+    if (dx*dx + dy*dy < (BALL_R + PU_R) * (BALL_R + PU_R)) {
+      spawnParticles(pu.cx, pu.cy, PU_COLORS[pu.type], 16);
+      applyPowerup(pu.type, lastHitter);
+      return false;
+    }
+    return pu.age < PU_LIFETIME;
+  });
+
+  // Tick all effect timers (skip in lab mode — applyLabToggles holds them at 9999)
+  const EFFECT_KEYS = ['wide','curve','power','split','shrunk','reversed'];
+  if (!labMode) {
+    for (const side of ['top','bottom']) {
+      const ef = activeEffects[side];
+      for (const key of EFFECT_KEYS) {
+        if (ef[key] > 0) {
+          ef[key] -= dt;
+          if (ef[key] < 0) ef[key] = 0;
+        }
+      }
+    }
+  }
+
+  // Score / lab auto-reset
+  if (ball.y < -BALL_R*2) {
+    if (labMode) { resetRound(1); return; }
+    scoreB++; sfx.score(); if (settings.visuals.screenShake) shakeAmt = 8;
+    if (scoreB>=WINNING_SCORE) { endGame(); return; }
+    resetRound(1);
+  }
+  if (ball.y > H+BALL_R*2) {
+    if (labMode) { resetRound(-1); return; }
+    scoreT++; sfx.score(); if (settings.visuals.screenShake) shakeAmt = 8;
+    if (scoreT>=WINNING_SCORE) { endGame(); return; }
+    resetRound(-1);
+  }
+}
+
+// ── Power-up: spawn ───────────────────────────────────────────────────────────
+function spawnPowerup() {
+  // Weights: curve ~9%, all others ~18% — then filter by settings
+  const allPool = ['wide','power','shrink','reverse','split','wide','power','shrink','reverse','split','curve'];
+  const pool = allPool.filter(t => settings.powerups[t]);
+  if (!pool.length) return null;
+  const type  = pool[Math.floor(Math.random() * pool.length)];
+  const safeTop = PU_WALL_PAD + 10;
+  const safeBot = H - PU_WALL_PAD - 10;
+  const puCx  = 40 + Math.random() * (W - 80);
+  const puCy  = safeTop + Math.random() * (safeBot - safeTop);
+  const speed = 0.55 + Math.random() * 0.65;
+  const dir   = Math.random() * Math.PI * 2;
+  return { cx: puCx, cy: puCy, vx: Math.cos(dir)*speed, vy: Math.sin(dir)*speed, type, age: 0 };
+}
+
+// ── Power-up: apply ───────────────────────────────────────────────────────────
+function applyPowerup(type, side) {
+  const opp = side === 'top' ? 'bottom' : 'top';
+  if (type === 'shrink') {
+    // Shrinks the OPPONENT's paddle
+    activeEffects[opp].shrunk = PU_DURATION;
+  } else if (type === 'reverse') {
+    // Reverses the OPPONENT's controls
+    activeEffects[opp].reversed = PU_DURATION;
+  } else {
+    // Buffs apply to the collector
+    activeEffects[side][type] = PU_DURATION;
+  }
+  sfx.powerup();
+}
+
+// ── Ghost ball: spawn ─────────────────────────────────────────────────────────
+function spawnGhostBall() {
+  const side       = lastHitter; // set by hitPaddle
+  const curveCombo = activeEffects[side].curve > 0 && activeEffects[side].split > 0;
+  const initSpeed  = Math.sqrt(velX*velX + velY*velY);
+
+  // Start from mirrored direction then apply a small random angle deviation
+  // so the ghost diverges slightly rather than being a perfect mirror
+  const baseAngle = Math.atan2(velY, -velX);
+  const deviation = (Math.random() * 0.32 - 0.16); // ±0.16 radians (~±9 degrees)
+  const angle     = baseAngle + deviation;
+
+  const ghostVX = initSpeed * Math.cos(angle);
+  const ghostVY = initSpeed * Math.sin(angle);
+
+  // 40% chance: swap trajectories at birth so the real ball goes the ghost's way
+  // and vice versa — neither identity changes, just the directions
+  if (Math.random() < 0.50) {
+    const realVX = velX, realVY = velY;
+    velX = ghostVX; velY = ghostVY;
+    ghostBall = {
+      x: ball.x, y: ball.y,
+      vx: realVX, vy: realVY,
+      age: 0,
+      curveSpin: curveCombo ? -curveSpin * 0.8 : 0,
+      speed: initSpeed,
+    };
+  } else {
+    ghostBall = {
+      x: ball.x, y: ball.y,
+      vx: ghostVX, vy: ghostVY,
+      age: 0,
+      curveSpin: curveCombo ? -curveSpin * 0.8 : 0,
+      speed: initSpeed,
+    };
+  }
+}
+
+// ── Obstacle physics step ─────────────────────────────────────────────────────
+function stepObstacle(obs) {
+  obs.age++;
+  obs.trail.push({ x: obs.cx, y: obs.cy });
+  if (obs.trail.length > MAX_TRAIL) obs.trail.shift();
+  obs.cx += obs.vx; obs.cy += obs.vy; obs.angle += obs.angVel;
+  obs.angVel *= OBS_ANG_DAMP; obs.vx *= OBS_LIN_DAMP; obs.vy *= OBS_LIN_DAMP;
+  if (Math.abs(obs.angVel) < OBS_MIN_ANGSPD) obs.angVel = Math.sign(obs.angVel) * OBS_MIN_ANGSPD;
+  // Enforce minimum linear speed so asteroids never stop
+  const ls0 = Math.sqrt(obs.vx*obs.vx + obs.vy*obs.vy);
+  if (ls0 > 0 && ls0 < OBS_MIN_LINSPD) { obs.vx = obs.vx/ls0*OBS_MIN_LINSPD; obs.vy = obs.vy/ls0*OBS_MIN_LINSPD; }
+  const r = obs.boundR;
+  if (obs.cx - r < 0)            { obs.cx = r;          obs.vx =  Math.abs(obs.vx); }
+  if (obs.cx + r > W)            { obs.cx = W-r;        obs.vx = -Math.abs(obs.vx); }
+  if (obs.cy - r < OBS_WALL_TOP) { obs.cy = OBS_WALL_TOP+r; obs.vy =  Math.abs(obs.vy); }
+  if (obs.cy + r > OBS_WALL_BOT) { obs.cy = OBS_WALL_BOT-r; obs.vy = -Math.abs(obs.vy); }
+  const cos = Math.cos(obs.angle), sin = Math.sin(obs.angle);
+  obs.verts = obs.baseVerts.map(v => ({
+    x: obs.cx + v.x*cos - v.y*sin,
+    y: obs.cy + v.x*sin + v.y*cos,
+  }));
+}
+
+// ── Spawn obstacle ────────────────────────────────────────────────────────────
+function spawnObstacle() {
+  const safeTop = PADDLE_MARGIN + PADDLE_H + 50;
+  const safeBot = H - PADDLE_MARGIN - PADDLE_H - 50;
+  const margin  = 45;
+  for (let t = 0; t < 25; t++) {
+    const ocx   = margin + Math.random() * (W - margin*2);
+    const ocy   = safeTop + Math.random() * (safeBot - safeTop);
+    const baseR = 15 + Math.random() * 11;
+    const minD  = baseR * 2 + 25;
+    if (obstacles.some(o => {
+      const dx=o.cx-ocx, dy=o.cy-ocy;
+      return Math.sqrt(dx*dx+dy*dy) < minD;
+    })) continue;
+    const numV = 6 + Math.floor(Math.random() * 4);
+    const step = (Math.PI*2) / numV;
+    const raw  = [];
+    for (let i=0; i<numV; i++) {
+      const jitter = (Math.random()-0.5) * step * 0.65;
+      const angle  = i*step + jitter;
+      const r      = baseR * (0.40 + Math.random() * 0.95);
+      raw.push({ angle, x: Math.cos(angle)*r, y: Math.sin(angle)*r });
+    }
+    raw.sort((a,b) => a.angle - b.angle);
+    const baseVerts = raw.map(v => ({ x: v.x, y: v.y }));
+    const boundR    = Math.max(...baseVerts.map(v => Math.sqrt(v.x*v.x + v.y*v.y)));
+    const speed     = 0.6 + Math.random() * 0.8;
+    const dir       = Math.random() * Math.PI * 2;
+    const verts     = baseVerts.map(v => ({ x: ocx+v.x, y: ocy+v.y }));
+    return { cx: ocx, cy: ocy, vx: Math.cos(dir)*speed, vy: Math.sin(dir)*speed, angle: 0, angVel: (Math.random() * 0.06 + 0.02) * (Math.random() < 0.5 ? 1 : -1), baseR, boundR, baseVerts, verts, age: 0, trail: [] };
+  }
+  return null;
+}
+
+// ── Ball ↔ obstacle collision (SAT — handles ball inside polygon correctly) ────
+function ballHitsObstacle(obs) {
+  // Fast bounding-circle early-out
+  const bcdx = ball.x - obs.cx, bcdy = ball.y - obs.cy;
+  if (bcdx*bcdx + bcdy*bcdy > (obs.boundR + BALL_R)*(obs.boundR + BALL_R)) return false;
+
+  const verts = obs.verts, n = verts.length;
+  let minOverlap = Infinity, bestNx = 0, bestNy = 0;
+
+  for (let i = 0; i < n; i++) {
+    const a = verts[i], b = verts[(i+1)%n];
+    const ex = b.x-a.x, ey = b.y-a.y;
+    const elen = Math.sqrt(ex*ex+ey*ey);
+    if (elen < 0.001) continue;
+
+    // Perpendicular to this edge — flip so it points away from the obstacle centroid
+    let nx = -ey/elen, ny = ex/elen;
+    if (nx*(obs.cx-a.x) + ny*(obs.cy-a.y) > 0) { nx=-nx; ny=-ny; }
+
+    // Project all polygon vertices onto this axis
+    let polyMin = Infinity, polyMax = -Infinity;
+    for (const v of verts) {
+      const p = v.x*nx + v.y*ny;
+      if (p < polyMin) polyMin = p;
+      if (p > polyMax) polyMax = p;
+    }
+
+    // Project ball circle onto same axis
+    const ballP   = ball.x*nx + ball.y*ny;
+    const ballMin = ballP - BALL_R, ballMax = ballP + BALL_R;
+
+    // Separating axis found → definitely no collision
+    if (ballMax <= polyMin || ballMin >= polyMax) return false;
+
+    // Track the axis of minimum penetration
+    const overlap = Math.min(ballMax - polyMin, polyMax - ballMin);
+    if (overlap < minOverlap) { minOverlap = overlap; bestNx = nx; bestNy = ny; }
+  }
+
+  // Guarantee resolution normal points from obstacle toward ball
+  // (handles the "ball trapped inside" case where normal can flip)
+  if (bestNx*(ball.x-obs.cx) + bestNy*(ball.y-obs.cy) < 0) { bestNx=-bestNx; bestNy=-bestNy; }
+
+  // Push ball fully clear of the obstacle
+  ball.x += bestNx * (minOverlap + 1.5);
+  ball.y += bestNy * (minOverlap + 1.5);
+
+  // Velocity response — reflect only if moving into the surface
+  const dot = velX*bestNx + velY*bestNy;
+  if (dot < 0) {
+    const impMag = -2*dot;
+    velX += impMag*bestNx; velY += impMag*bestNy;
+    const rx = ball.x-obs.cx, ry = ball.y-obs.cy;
+    const fx = -impMag*bestNx, fy = -impMag*bestNy;
+    obs.angVel = clamp(obs.angVel+(rx*fy-ry*fx)*0.004,-OBS_MAX_ANGVEL,OBS_MAX_ANGVEL);
+    obs.vx -= bestNx*impMag*0.08; obs.vy -= bestNy*impMag*0.08;
+    const ls = Math.sqrt(obs.vx*obs.vx+obs.vy*obs.vy);
+    if (ls>OBS_MAX_LINSPD) { obs.vx=obs.vx/ls*OBS_MAX_LINSPD; obs.vy=obs.vy/ls*OBS_MAX_LINSPD; }
+  }
+  return true;
+}
+
+// ── Register paddle hit & maybe spawn obstacle ────────────────────────────────
+function registerHit() {
+  hitCount++;
+  if (hitCount % HITS_PER_OBS === 0 && obstacles.length < MAX_OBS) {
+    const obs = spawnObstacle();
+    if (obs) { obstacles.push(obs); sfx.spawn(); }
+  }
+}
+
+// ── Paddle collisions ─────────────────────────────────────────────────────────
+function hitPaddle(paddle, side, velDir) {
+  const isTop = side === 'top';
+  const pw    = getPaddleW(isTop);
+  const inX   = ball.x+BALL_R >= paddle.x && ball.x-BALL_R <= paddle.x+pw;
+  const inY   = isTop
+    ? (ball.y-BALL_R <= paddle.y+PADDLE_H && ball.y+BALL_R >= paddle.y)
+    : (ball.y+BALL_R >= paddle.y          && ball.y-BALL_R <= paddle.y+PADDLE_H);
+  if (inX && inY && velY * velDir > 0) {
+    lastHitter = side;
+    normalSpeed = Math.min(normalSpeed + SPEED_INC, MAX_SPEED);
+    const eff = activeEffects[side];
+    ballSpeed  = eff.power > 0 ? Math.min(normalSpeed + PU_POWER_BOOST, PU_POWER_MAX) : normalSpeed;
+    const rel  = (ball.x - (paddle.x + pw/2)) / (pw/2);
+    const spd  = ballSpeed * Math.cos(rel*1.1);
+    velY  = isTop ? Math.abs(spd) : -Math.abs(spd);
+    velX  = ballSpeed * Math.sin(rel*1.1);
+    ball.y = isTop ? paddle.y + PADDLE_H + BALL_R : paddle.y - BALL_R;
+    curveSpin = eff.curve > 0 ? rel * PU_CURVE_FORCE * (eff.power > 0 ? 1.65 : 1.0) : 0;
+    if (eff.split > 0 && !ghostBall) spawnGhostBall();
+    registerHit(); return true;
+  }
+  return false;
+}
+
+// ── AI ────────────────────────────────────────────────────────────────────────
+// Predict where the ball will cross the AI paddle's Y line, bouncing off walls
+function predictBallX() {
+  // Simulate ball path to paddleB Y, accounting for wall bounces
+  let bx = ball.x, by = ball.y, bvx = velX, bvy = velY;
+  const targetY = paddleB.y;
+  if (bvy <= 0) return ball.x;
+  for (let i = 0; i < 600; i++) {
+    bx += bvx;
+    by += bvy;
+    if (bx - BALL_R < 0)    { bx = BALL_R;     bvx =  Math.abs(bvx); }
+    if (bx + BALL_R > W)    { bx = W - BALL_R; bvx = -Math.abs(bvx); }
+    if (by >= targetY) break;
+  }
+  return bx;
+}
+
+function aiMove(dt, ps) {
+  const cfg    = DIFF[difficulty];
+  const pw     = getPaddleW(false);
+  const center = paddleB.x + pw / 2;
+
+  // ── REVERSE power-up confusion ────────────────────────────────────────────
+  const reversed = activeEffects.bottom.reversed > 0;
+  if (reversed) {
+    if (aiReverseDelay > 0) {
+      // Still in confusion window — go the wrong way
+      aiReverseDelay -= dt;
+      aiReverseConfused = true;
+    } else if (!aiReverseConfused) {
+      // Just got reversed — set confusion delay based on difficulty
+      const confusionFrames = difficulty === 'easy' ? 60
+                            : difficulty === 'medium' ? 25
+                            : (Math.random() < 0.06 ? 8 : 0); // hard: tiny rare fumble
+      aiReverseDelay   = confusionFrames;
+      aiReverseConfused = true;
+    }
+  } else {
+    // Reverse wore off — reset
+    aiReverseDelay    = 0;
+    aiReverseConfused = false;
+  }
+
+  // ── SPLIT (ghost ball) confusion ──────────────────────────────────────────
+  let targetX = ball.x; // default: track real ball
+
+  if (ghostBall) {
+    if (--aiGhostCheckTimer <= 0) {
+      // Re-evaluate: should we chase ghost or real ball?
+      const foolChance = difficulty === 'easy'   ? 0.65
+                       : difficulty === 'medium'  ? 0.22
+                       : 0.04; // hard: very rarely fooled
+      aiGhostLocked    = Math.random() < foolChance;
+      aiGhostCheckTimer = difficulty === 'easy'   ? 25
+                        : difficulty === 'medium'  ? 15
+                        : 12;
+    }
+    if (aiGhostLocked) targetX = ghostBall.x; // chasing the fake
+  } else {
+    // Ghost gone — reset
+    aiGhostLocked     = false;
+    aiGhostCheckTimer = 0;
+  }
+
+  // ── CURVE misread ─────────────────────────────────────────────────────────
+  // curveSpin pushes the ball sideways — easy/medium don't fully account for it
+  // They track current ball X which already includes curve drift, but we add
+  // an extra offset in the wrong direction to simulate misreading the curve
+  if (Math.abs(curveSpin) > 0.01 && velY > 0) {
+    const curveOffset = difficulty === 'easy'   ? -curveSpin * 18
+                      : difficulty === 'medium'  ? -curveSpin * 8
+                      : 0; // hard reads curve perfectly
+    targetX += curveOffset;
+  }
+
+  // ── Apply reverse confusion to target ────────────────────────────────────
+  if (aiReverseConfused && reversed) {
+    targetX = W - targetX; // thinks it needs to go opposite direction
+  }
+
+  // ── Move toward target ────────────────────────────────────────────────────
+  // Speed reduced slightly when confused by power-ups (hesitation effect)
+  const confused  = aiReverseConfused || aiGhostLocked;
+  const speedMult = confused
+    ? (difficulty === 'easy' ? cfg.speedMult * 0.7 : cfg.speedMult * 0.88)
+    : cfg.speedMult;
+  const as = ps * speedMult;
+
+  if (targetX < center - 2)      paddleB.x -= as * dt;
+  else if (targetX > center + 2) paddleB.x += as * dt;
+
+  paddleB.x = clamp(paddleB.x, 0, W - pw);
+}
+
+// ── Draw ──────────────────────────────────────────────────────────────────────
+function draw() {
+  cx.save();
+  // Screen shake — random offset, decays each frame
+  if (shakeAmt > 0) {
+    cx.translate((Math.random()-0.5)*shakeAmt, (Math.random()-0.5)*shakeAmt);
+    shakeAmt *= 0.78;
+    if (shakeAmt < 0.3) shakeAmt = 0;
+  }
+  cx.scale(1.25, 1.25);   // 560×660 logical → 700×825 physical
+  cx.fillStyle='#000'; cx.fillRect(0,0,W,H);
+
+  // Center dash
+  cx.setLineDash([10,9]); cx.lineWidth=2; cx.strokeStyle='#1a1a1a';
+  cx.beginPath(); cx.moveTo(0,H/2); cx.lineTo(W,H/2); cx.stroke();
+  cx.setLineDash([]);
+
+  // Scores (hidden in lab mode — show LAB label instead)
+  cx.textAlign='center'; cx.textBaseline='middle';
+  if (labMode) {
+    cx.font='0.55rem Courier New'; cx.fillStyle='#1e1e1e';
+    cx.fillText('POWER-UP LAB', W/2, H/2 - 10);
+  } else {
+    cx.font='0.58rem Courier New'; cx.fillStyle='#2e2e2e';
+    cx.fillText('PLAYER 1', W/2, H/4-26);
+    cx.font='bold 3.2rem Courier New'; cx.fillStyle='#252525';
+    cx.fillText(scoreT, W/2, H/4);
+    cx.font='0.58rem Courier New'; cx.fillStyle='#2e2e2e';
+    cx.fillText(mode==='ai'?'COMPUTER':mode==='mp'?'OPPONENT':'PLAYER 2', W/2, H*3/4+26);
+    cx.font='bold 3.2rem Courier New'; cx.fillStyle='#252525';
+    cx.fillText(scoreB, W/2, H*3/4);
+  }
+
+  // Speed indicator
+  const pct=(ballSpeed-BASE_SPEED)/(MAX_SPEED-BASE_SPEED);
+  if (pct>0) {
+    cx.font='0.52rem Courier New';
+    cx.fillStyle=`rgba(255,110,60,${pct*0.38})`;
+    cx.fillText('SPEED ×'+ballSpeed.toFixed(1), W/2, H/2+20);
+  }
+
+  // Difficulty badge
+  if (mode==='ai'&&difficulty) {
+    cx.textAlign='right'; cx.font='0.5rem Courier New';
+    cx.globalAlpha=0.22; cx.fillStyle=DIFF_COLOR[difficulty];
+    cx.fillText(difficulty.toUpperCase(), W-10, H-10);
+    cx.globalAlpha=1; cx.textAlign='center';
+  }
+
+  for (const obs of obstacles) drawObstacle(obs);
+  for (const pu  of powerups)   drawPowerup(pu);
+
+  drawPaddle(paddleT, true);
+  drawPaddle(paddleB, false);
+
+  // Ghost ball
+  drawGhostBall();
+
+  // Ball trail
+  if (settings.visuals.ballTrail && ballTrail.length > 1) {
+    for (let i = 0; i < ballTrail.length; i++) {
+      const t = ballTrail[i];
+      const frac = i / ballTrail.length;
+      cx.globalAlpha = frac * 0.32;
+      cx.fillStyle = '#fff';
+      cx.beginPath(); cx.arc(t.x, t.y, BALL_R * (0.35 + 0.65 * frac), 0, Math.PI*2); cx.fill();
+    }
+    cx.globalAlpha = 1;
+  }
+
+  // Particles
+  if (particles.length) {
+    for (const p of particles) {
+      cx.globalAlpha = p.life * 0.9;
+      cx.fillStyle = p.color;
+      cx.shadowBlur = 6; cx.shadowColor = p.color;
+      cx.beginPath(); cx.arc(p.x, p.y, p.r, 0, Math.PI*2); cx.fill();
+      cx.shadowBlur = 0;
+    }
+    cx.globalAlpha = 1;
+  }
+
+  // Real ball — tinted blue while curving
+  const ballCol = curveSpin !== 0 ? '#88ccff' : '#fff';
+  cx.fillStyle=ballCol; cx.shadowBlur=14; cx.shadowColor=ballCol;
+  cx.beginPath(); cx.arc(ball.x,ball.y,BALL_R,0,Math.PI*2); cx.fill();
+  cx.shadowBlur=0;
+
+  drawEffectHUD();
+  if (countdownTimer > 0) drawCountdown();
+
+  if (paused) {
+    cx.fillStyle='rgba(0,0,0,0.6)'; cx.fillRect(0,0,W,H);
+    cx.textAlign='center';
+    cx.fillStyle='#fff'; cx.font='bold 1.8rem Courier New';
+    cx.shadowBlur=14; cx.shadowColor='#fff';
+    cx.fillText('PAUSED',W/2,H/2-12); cx.shadowBlur=0;
+    cx.font='0.7rem Courier New'; cx.fillStyle='#666';
+    cx.fillText(mpMode==='host' ? 'SPACE to resume  ·  T to chat' : 'SPACE to resume', W/2, H/2+22);
+  }
+  if (mpMode === 'guest' && mpGuestPaused) {
+    cx.fillStyle='rgba(0,0,0,0.65)'; cx.fillRect(0,0,W,H);
+    cx.textAlign='center';
+    cx.fillStyle='#aaa'; cx.font='bold 1.6rem Courier New';
+    cx.shadowBlur=14; cx.shadowColor='#aaa';
+    cx.fillText('GAME PAUSED',W/2,H/2-16); cx.shadowBlur=0;
+    cx.font='0.65rem Courier New'; cx.fillStyle='#555';
+    cx.fillText('HOST PAUSED THE GAME',W/2,H/2+14);
+    cx.fillText('PRESS T TO CHAT',W/2,H/2+36);
+  }
+  cx.restore();
+  // Chat overlay drawn after restore so it's in physical canvas coords (700×825)
+  drawChatOverlay();
+}
+
+// ── Countdown overlay ────────────────────────────────────────────────────────
+function drawCountdown() {
+  if (countdownTimer <= 0) return;
+  let num, phase;
+  if      (countdownTimer > 60) { num = '3'; phase = 1 - (countdownTimer - 60) / 30; }
+  else if (countdownTimer > 30) { num = '2'; phase = 1 - (countdownTimer - 30) / 30; }
+  else                          { num = '1'; phase = 1 - countdownTimer / 30; }
+  phase = clamp(phase, 0, 1);
+  const scale = 1 + 0.45 * Math.max(0, 1 - phase * 4);
+  const alpha = phase < 0.1 ? phase * 10 : phase > 0.82 ? 1 - (phase - 0.82) / 0.18 : 1;
+  cx.save();
+  cx.translate(W/2, H/2);
+  cx.scale(scale, scale);
+  cx.globalAlpha = clamp(alpha, 0, 1);
+  cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  cx.font = 'bold 4.5rem Courier New';
+  cx.fillStyle = '#fff'; cx.shadowBlur = 28; cx.shadowColor = '#fff';
+  cx.fillText(num, 0, 0);
+  cx.shadowBlur = 0;
+  cx.restore();
+}
+
+// ── Draw ghost ball ───────────────────────────────────────────────────────────
+function drawGhostBall() {
+  if (!ghostBall) return;
+  // flash goes 0 → 1 → 0, giving a wide dim-to-bright swing
+  const flash    = Math.pow(0.5 + 0.5 * Math.sin((performance.now() / 1000) * Math.PI * 2 * 3.5), 2);
+  const ghostCol = ghostBall.curveSpin ? '#88ccff' : '#fff';
+  cx.save();
+
+  // Trail — identical to real ball trail
+  if (settings.visuals.ballTrail && ghostTrail.length > 1) {
+    for (let i = 0; i < ghostTrail.length; i++) {
+      const t = ghostTrail[i];
+      const frac = i / ghostTrail.length;
+      cx.globalAlpha = frac * 0.32;
+      cx.fillStyle = ghostCol;
+      cx.beginPath(); cx.arc(t.x, t.y, BALL_R * (0.35 + 0.65 * frac), 0, Math.PI*2); cx.fill();
+    }
+    cx.globalAlpha = 1;
+  }
+
+  // Pulsing glow halo — the only tell that separates it from the real ball
+  cx.globalAlpha = 0.15 + 0.85 * flash;   // swings from nearly invisible → strong
+  cx.fillStyle   = ghostCol;
+  cx.shadowBlur  = 6 + flash * 44;         // swings from faint fringe → big bloom
+  cx.shadowColor = ghostCol;
+  cx.beginPath(); cx.arc(ghostBall.x, ghostBall.y, BALL_R, 0, Math.PI*2); cx.fill();
+  cx.shadowBlur = 0;
+
+  // Solid ball — faint blue-grey tint as subtle tell
+  cx.globalAlpha = 1;
+  cx.fillStyle   = ghostBall.curveSpin ? '#88ccff' : '#c8d8f0';
+  cx.beginPath(); cx.arc(ghostBall.x, ghostBall.y, BALL_R, 0, Math.PI*2); cx.fill();
+
+  cx.restore();
+}
+
+// ── Draw power-up ─────────────────────────────────────────────────────────────
+function drawPowerup(pu) {
+  const alpha = Math.min(1, pu.age / 30);
+  const col   = PU_COLORS[pu.type];
+  const pulse = 0.85 + 0.15 * Math.sin(pu.age * 0.10);
+  cx.save();
+  cx.globalAlpha = alpha;
+  cx.beginPath(); cx.arc(pu.cx, pu.cy, PU_R * pulse, 0, Math.PI*2);
+  cx.strokeStyle = col; cx.lineWidth = 2; cx.shadowBlur = 14; cx.shadowColor = col;
+  cx.stroke(); cx.shadowBlur = 0;
+  cx.globalAlpha = alpha * 0.18; cx.fillStyle = col; cx.fill();
+  cx.globalAlpha = alpha;
+  cx.fillStyle = col; cx.font = 'bold 0.65rem Courier New';
+  cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  cx.fillText(PU_LABELS[pu.type], pu.cx, pu.cy);
+  cx.restore();
+}
+
+// ── Effect HUD ────────────────────────────────────────────────────────────────
+function drawEffectHUD() {
+  const buffs  = ['wide','curve','power','split'];
+  const debuffs= ['shrunk','reversed'];
+
+  // Top player — top-left corner
+  let xT = 6, topBufs = 0;
+  for (const k of [...buffs, ...debuffs]) {
+    const t = activeEffects.top[k];
+    if (t > 0) { drawEffectBadge(xT, 6, k, t / PU_DURATION); xT += 46; if (buffs.includes(k)) topBufs++; }
+  }
+  if (topBufs >= 2) drawComboTag(6, 30, topBufs, false);
+
+  // Bottom player — bottom-right corner
+  let xB = W - 6, botBufs = 0;
+  for (const k of [...buffs, ...debuffs]) {
+    const t = activeEffects.bottom[k];
+    if (t > 0) { drawEffectBadge(xB - 40, H - 26, k, t / PU_DURATION); xB -= 46; if (buffs.includes(k)) botBufs++; }
+  }
+  if (botBufs >= 2) drawComboTag(W - 6, H - 30, botBufs, true);
+}
+
+function drawComboTag(x, y, count, rightAlign) {
+  const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 280);
+  cx.save();
+  cx.globalAlpha = pulse;
+  cx.textAlign = rightAlign ? 'right' : 'left';
+  cx.textBaseline = 'middle';
+  cx.font = 'bold 0.48rem Courier New';
+  cx.fillStyle = '#fff';
+  cx.shadowBlur = 10; cx.shadowColor = '#fff';
+  cx.fillText('⚡ ×' + count + ' COMBO', x, y);
+  cx.shadowBlur = 0;
+  cx.restore();
+}
+
+function drawEffectBadge(x, y, type, frac) {
+  const col = PU_COLORS[type];
+  const w = 40, h = 18;
+  cx.save();
+  cx.fillStyle = 'rgba(0,0,0,0.75)';
+  cx.beginPath(); cx.roundRect(x, y, w, h, 3); cx.fill();
+  cx.fillStyle = col; cx.globalAlpha = 0.28;
+  cx.beginPath(); cx.roundRect(x, y, w * frac, h, 3); cx.fill();
+  cx.globalAlpha = 0.7; cx.strokeStyle = col; cx.lineWidth = 1;
+  cx.beginPath(); cx.roundRect(x, y, w, h, 3); cx.stroke();
+  cx.globalAlpha = 1; cx.fillStyle = col;
+  cx.font = 'bold 0.5rem Courier New'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  cx.fillText(PU_NAMES[type], x + w/2, y + h/2);
+  cx.restore();
+}
+
+// ── Draw obstacle helpers ─────────────────────────────────────────────────────
+function drawObstacleTrail(obs) {
+  const speed = Math.sqrt(obs.vx*obs.vx + obs.vy*obs.vy);
+  if (speed < 0.08) return;
+  const alpha   = Math.min(1, obs.age / OBS_FADE);
+  const trailLen= speed * 42, trailW = obs.baseR * 0.8;
+  const dx = obs.vx/speed, dy = obs.vy/speed;
+  const tx = obs.cx - dx*trailLen, ty = obs.cy - dy*trailLen;
+  const grd = cx.createLinearGradient(obs.cx, obs.cy, tx, ty);
+  grd.addColorStop(0,   `rgba(160,145,240,${alpha*0.75})`);
+  grd.addColorStop(0.35,`rgba(140,125,220,${alpha*0.35})`);
+  grd.addColorStop(1,   `rgba(130,115,210,0)`);
+  cx.save();
+  cx.beginPath(); cx.moveTo(obs.cx,obs.cy); cx.lineTo(tx,ty);
+  cx.strokeStyle=grd; cx.lineWidth=trailW; cx.lineCap='round'; cx.stroke();
+  cx.restore();
+}
+
+function drawObstacle(obs) {
+  drawObstacleTrail(obs);
+  const alpha = Math.min(1, obs.age / OBS_FADE);
+  const verts = obs.verts, n = verts.length;
+  cx.save(); cx.globalAlpha = alpha;
+  cx.beginPath(); cx.moveTo(verts[0].x, verts[0].y);
+  for (let i=1;i<n;i++) cx.lineTo(verts[i].x, verts[i].y);
+  cx.closePath();
+  const grd = cx.createRadialGradient(obs.cx,obs.cy,0, obs.cx,obs.cy,obs.baseR*1.3);
+  grd.addColorStop(0,'#3d3d3d'); grd.addColorStop(1,'#181818');
+  cx.fillStyle=grd; cx.fill();
+  const glow = Math.min(1, Math.abs(obs.angVel) / OBS_MAX_ANGVEL);
+  cx.shadowBlur=6+glow*14; cx.shadowColor=`rgba(160,160,255,${0.35+glow*0.45})`;
+  cx.strokeStyle=`rgba(130,130,210,${alpha*(0.6+glow*0.35)})`; cx.lineWidth=1.5; cx.stroke(); cx.shadowBlur=0;
+  cx.beginPath();
+  cx.moveTo(obs.cx-obs.baseR*0.22, obs.cy-obs.baseR*0.28);
+  cx.lineTo(obs.cx+obs.baseR*0.12, obs.cy-obs.baseR*0.42);
+  cx.strokeStyle=`rgba(255,255,255,${alpha*0.10})`; cx.lineWidth=1; cx.stroke();
+  cx.restore();
+}
+
+// ── Draw paddle ───────────────────────────────────────────────────────────────
+function drawPaddle(p, isTop) {
+  const pw   = getPaddleW(isTop);
+  const side = isTop ? 'top' : 'bottom';
+
+  // Determine glow — buffs take priority, then debuffs
+  let glowCol = null, expiringIn = 0;
+  for (const k of ['wide','curve','power','split']) {
+    const t = activeEffects[side][k];
+    if (t > 0) { glowCol = PU_COLORS[k]; expiringIn = t; break; }
+  }
+  if (!glowCol) {
+    for (const k of ['shrunk','reversed']) {
+      const t = activeEffects[side][k];
+      if (t > 0) { glowCol = PU_COLORS[k]; expiringIn = t; break; }
+    }
+  }
+
+  let shadowBlur  = 8;
+  let shadowColor = 'rgba(255,255,255,0.4)';
+  if (glowCol) {
+    if (expiringIn < 60) {
+      // Flash rapidly in the last ~1 second
+      const flash = 0.5 + 0.5 * Math.sin((performance.now() / 1000) * Math.PI * 2 * 8);
+      shadowBlur  = 5 + flash * 22;
+    } else {
+      shadowBlur = 10;
+    }
+    shadowColor = glowCol;
+  }
+
+  const grd = isTop
+    ? cx.createLinearGradient(0,p.y,0,p.y+PADDLE_H)
+    : cx.createLinearGradient(0,p.y+PADDLE_H,0,p.y);
+  grd.addColorStop(0,'#eee'); grd.addColorStop(1,'#777');
+  cx.fillStyle=grd; cx.shadowBlur=shadowBlur; cx.shadowColor=shadowColor;
+  const r=4;
+  cx.beginPath();
+  cx.moveTo(p.x+r,p.y); cx.lineTo(p.x+pw-r,p.y);
+  cx.quadraticCurveTo(p.x+pw,p.y,       p.x+pw,p.y+r);
+  cx.lineTo(p.x+pw,p.y+PADDLE_H-r);
+  cx.quadraticCurveTo(p.x+pw,p.y+PADDLE_H, p.x+pw-r,p.y+PADDLE_H);
+  cx.lineTo(p.x+r,p.y+PADDLE_H);
+  cx.quadraticCurveTo(p.x,p.y+PADDLE_H, p.x,p.y+PADDLE_H-r);
+  cx.lineTo(p.x,p.y+r);
+  cx.quadraticCurveTo(p.x,p.y, p.x+r,p.y);
+  cx.closePath(); cx.fill(); cx.shadowBlur=0;
+}
+
+// ── End game ──────────────────────────────────────────────────────────────────
+
+// ── ACCOUNT SYSTEM ──────────────────────────────────────────────────────────
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx7cDvt-aY0_bdjvvZKnojN-4K-BGkvSWTE0ZzAYbKUNMto7WZzrgfccN4L-bxx_oM/exec'; // ← paste your deployed URL
+
+let acctUser = null;  // { username, token } when logged in, else null
+// token is just the password hash — used to re-auth on auto-save calls
+
+// ── SHA-256 helper ────────────────────────────────────────────────────────────
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// ── Cookie helpers ───────────────────────────────────────────────────────────
+function setCookie(name, value, days) {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/; SameSite=None; Secure';
+}
+function getCookie(name) {
+  const match = document.cookie.match('(?:^|; )' + name + '=([^;]*)');
+  return match ? decodeURIComponent(match[1]) : null;
+}
+function deleteCookie(name) {
+  document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=None; Secure';
+}
+
+// ── Auto-login from cookie on page load ──────────────────────────────────────
+async function tryAutoLogin() {
+  try {
+    const username = getCookie('cpong_user');
+    const hash     = getCookie('cpong_token');
+    if (!username || !hash) return;
+    const res = await acctAPI('login', { username, passwordHash: hash });
+    if (res.ok) {
+      acctUser = { username, token: hash };
+      applyLoadedSettings(res.settings);
+      refreshAcctView();
+      updateLoginModeBtn();
+      updateRdyIdentity();
+    } else {
+      // Token no longer valid — clear cookies
+      deleteCookie('cpong_user');
+      deleteCookie('cpong_token');
+    }
+  } catch(e) {}
+}
+// Run after a short delay so the UI is ready
+setTimeout(tryAutoLogin, 300);
+
+// ── API call helper ───────────────────────────────────────────────────────────
+async function acctAPI(action, payload = {}) {
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action, ...payload }),
+    });
+    return await res.json();
+  } catch(e) {
+    return { ok: false, error: 'Network error' };
+  }
+}
+
+// ── Overlay open/close ────────────────────────────────────────────────────────
+function positionOverCanvas(el) {
+  const s = screenEls[currentScreen] || document.body;
+  let ref = s.getBoundingClientRect();
+  if (!ref) ref = document.body.getBoundingClientRect();
+  el.style.left   = ref.left + 'px';
+  el.style.top    = ref.top  + window.scrollY + 'px';
+  el.style.width  = ref.width  + 'px';
+  el.style.height = ref.height + 'px';
+}
+
+function openAcctOverlay() {
+  document.getElementById('acct-err').textContent = '';
+  document.getElementById('acct-user').value = '';
+  document.getElementById('acct-pass').value = '';
+  document.getElementById('acct-save-status').textContent = '';
+  refreshAcctView();
+  const el = document.getElementById('acct-overlay');
+  positionOverCanvas(el);
+  el.classList.add('open');
+}
+function closeAcctOverlay() {
+  document.getElementById('acct-overlay').classList.remove('open');
+  updateLoginModeBtn();
+}
+function openStatsOverlay() {
+  const el = document.getElementById('stats-overlay');
+  positionOverCanvas(el);
+  el.classList.add('open');
+  if (acctUser) loadAndShowStats();
+  else {
+    document.getElementById('stats-loggedout-msg').style.display = '';
+    document.getElementById('stats-content').style.display = 'none';
+  }
+}
+function closeStatsOverlay() {
+  document.getElementById('stats-overlay').classList.remove('open');
+}
+
+function refreshAcctView() {
+  const out = document.getElementById('acct-loggedout');
+  const inn = document.getElementById('acct-loggedin');
+  if (acctUser) {
+    out.style.display = 'none'; inn.style.display = '';
+    document.getElementById('acct-display-name').textContent = acctUser.username;
+  } else {
+    out.style.display = ''; inn.style.display = 'none';
+  }
+}
+
+function updateLoginModeBtn() {
+  const btn = document.getElementById('login-mode-btn');
+  if (btn) btn.textContent = acctUser ? '★ ' + acctUser.username.substring(0,8) : 'LOGIN';
+}
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+async function acctLogin() {
+  const username = document.getElementById('acct-user').value.trim();
+  const password = document.getElementById('acct-pass').value;
+  if (!username || !password) { document.getElementById('acct-err').textContent = 'Enter username and password.'; return; }
+  document.getElementById('acct-err').textContent = 'Logging in…';
+  const hash = await sha256(password);
+  const res = await acctAPI('login', { username, passwordHash: hash });
+  if (res.ok) {
+    acctUser = { username, token: hash };
+    applyLoadedSettings(res.settings);
+    refreshAcctView();
+    updateLoginModeBtn();
+    updateRdyIdentity();
+    document.getElementById('acct-err').textContent = '';
+    document.getElementById('acct-save-status').textContent = 'Logged in ✓';
+    // Save to cookie if remember me is checked (30 day expiry)
+    const remember = document.getElementById('acct-remember');
+    if (remember && remember.checked) {
+      setCookie('cpong_user', username, 30);
+      setCookie('cpong_token', hash, 30);
+    }
+  } else {
+    document.getElementById('acct-err').textContent = res.error || 'Login failed.';
+  }
+}
+
+// ── Create account ────────────────────────────────────────────────────────────
+async function acctCreate() {
+  const username = document.getElementById('acct-user').value.trim();
+  const password = document.getElementById('acct-pass').value;
+  if (!username || !password) { document.getElementById('acct-err').textContent = 'Enter username and password.'; return; }
+  if (username.length < 3)   { document.getElementById('acct-err').textContent = 'Username must be 3+ characters.'; return; }
+
+  document.getElementById('acct-err').textContent = 'Creating account…';
+  const hash = await sha256(password);
+  const res = await acctAPI('createAccount', { username, passwordHash: hash, settings: gatherSettings() });
+  if (res.ok) {
+    acctUser = { username, token: hash };
+    refreshAcctView();
+    updateLoginModeBtn();
+    updateRdyIdentity();
+    document.getElementById('acct-err').textContent = '';
+    document.getElementById('acct-save-status').textContent = 'Account created ✓';
+  } else {
+    document.getElementById('acct-err').textContent = res.error || 'Could not create account.';
+  }
+}
+
+// ── Logout ────────────────────────────────────────────────────────────────────
+function acctLogout() {
+  acctUser = null;
+  deleteCookie('cpong_user'); deleteCookie('cpong_token');
+  refreshAcctView();
+  updateLoginModeBtn();
+  updateRdyIdentity();
+}
+
+// ── Gather current settings for saving ───────────────────────────────────────
+function gatherSettings() {
+  return {
+    volume,
+    winScore: WINNING_SCORE,
+    powerups: { ...settings.powerups },
+    visuals:  { ...settings.visuals  },
+  };
+}
+
+// ── Apply settings loaded from account ───────────────────────────────────────
+function applyLoadedSettings(s) {
+  if (!s) return;
+  if (s.volume !== undefined) {
+    volume = s.volume;
+    document.getElementById('vol-slider').value = volume;
+  }
+  if (s.winScore) setWinScore(s.winScore);
+  if (s.powerups) {
+    for (const key of Object.keys(settings.powerups)) {
+      if (s.powerups[key] !== undefined) {
+        settings.powerups[key] = s.powerups[key];
+        const btn = document.getElementById('stg-' + key);
+        if (btn) btn.classList.toggle('on', settings.powerups[key]);
+      }
+    }
+  }
+  if (s.visuals) {
+    for (const key of Object.keys(settings.visuals)) {
+      if (s.visuals[key] !== undefined) {
+        settings.visuals[key] = s.visuals[key];
+        const btn = document.getElementById('stg-' + key);
+        if (btn) btn.classList.toggle('on', settings.visuals[key]);
+      }
+    }
+  }
+}
+
+// ── Auto-save settings (called whenever a setting changes) ───────────────────
+async function autoSaveSettings() {
+  if (!acctUser) return;
+  const res = await acctAPI('saveSettings', {
+    username: acctUser.username,
+    passwordHash: acctUser.token,
+    settings: gatherSettings(),
+  });
+  const el = document.getElementById('acct-save-status');
+  if (el) el.textContent = res.ok ? 'Saved ✓' : 'Save failed';
+}
+
+// ── Patch toggleSetting and setWinScore and vol-slider to auto-save ───────────
+const _origToggleSetting = toggleSetting;
+toggleSetting = function(group, key) {
+  _origToggleSetting(group, key);
+  autoSaveSettings();
+};
+const _origSetWinScore = setWinScore;
+setWinScore = function(n) {
+  _origSetWinScore(n);
+  autoSaveSettings();
+};
+document.getElementById('vol-slider').addEventListener('change', () => autoSaveSettings());
+
+// ── MP Ready screen identity ──────────────────────────────────────────────────
+function updateRdyIdentity() {
+  const loggedin  = document.getElementById('rdy-id-loggedin');
+  const loggedout = document.getElementById('rdy-id-loggedout');
+  const nameEl    = document.getElementById('rdy-id-name');
+  if (!loggedin) return;
+  if (acctUser) {
+    loggedin.style.display  = '';
+    loggedout.style.display = 'none';
+    if (nameEl) nameEl.textContent = acctUser.username;
+  } else {
+    loggedin.style.display  = 'none';
+    loggedout.style.display = '';
+  }
+  document.getElementById('rdy-id-status').textContent = '';
+}
+
+async function rdyLogin() {
+  const username = document.getElementById('rdy-user').value.trim();
+  const password = document.getElementById('rdy-pass').value;
+  if (!username && !password) { return; } // blank = play as guest
+  if (!username || !password) {
+    document.getElementById('rdy-id-status').textContent = 'Enter both fields or leave both blank.';
+    return;
+  }
+  document.getElementById('rdy-id-status').textContent = 'Logging in…';
+  const hash = await sha256(password);
+  const res = await acctAPI('login', { username, passwordHash: hash });
+  if (res.ok) {
+    acctUser = { username, token: hash };
+    applyLoadedSettings(res.settings);
+    updateRdyIdentity();
+    updateLoginModeBtn();
+  } else {
+    document.getElementById('rdy-id-status').textContent = res.error || 'Login failed.';
+  }
+}
+
+// ── Stat recording ────────────────────────────────────────────────────────────
+// Called at end of AI game with result from local player's perspective
+async function recordAIMatch(won) {
+  if (!acctUser || mode !== 'ai') return;
+  await acctAPI('recordComputerMatch', {
+    username: acctUser.username,
+    passwordHash: acctUser.token,
+    difficulty,
+    won,
+  });
+}
+
+// Called by host at end of MP game; collects both players' identities
+async function recordMPMatch(hostWon) {
+  if (mode !== 'mp' || mpMode !== 'host') return;
+  const hostUser  = acctUser ? acctUser.username : null;
+  const guestUser = mpGuestUsername || null; // sent via identity handshake
+  if (!hostUser && !guestUser) return; // neither logged in — nothing to record
+  await acctAPI('recordMultiplayerMatch', {
+    hostUsername:  hostUser,
+    hostToken:     acctUser ? acctUser.token : null,
+    guestUsername: guestUser,
+    guestToken:    mpGuestToken || null,
+    hostWon,
+  });
+}
+
+// ── Load and display stats ────────────────────────────────────────────────────
+async function loadAndShowStats() {
+  if (!acctUser) return;
+  document.getElementById('stats-loggedout-msg').style.display = 'none';
+  const content = document.getElementById('stats-content');
+  content.style.display = 'flex';
+
+  const res = await acctAPI('getStats', {
+    username: acctUser.username,
+    passwordHash: acctUser.token,
+  });
+  if (!res.ok) { content.innerHTML = '<p style="color:#555;font-size:0.65rem">Could not load stats.</p>'; return; }
+
+  const s = res.stats;
+  function fmtAI(diff) {
+    const d = s.ai[diff] || { w:0, l:0 };
+    const total = d.w + d.l;
+    const rate  = total ? Math.round(d.w / total * 100) + '%' : '—';
+    return `${d.w}W / ${d.l}L &nbsp;<span class="stats-rate">${rate}</span>`;
+  }
+  document.getElementById('stats-ai-easy').querySelector('.stat-val').innerHTML   = fmtAI('easy');
+  document.getElementById('stats-ai-medium').querySelector('.stat-val').innerHTML = fmtAI('medium');
+  document.getElementById('stats-ai-hard').querySelector('.stat-val').innerHTML   = fmtAI('hard');
+
+  const mp = s.mp || { w:0, l:0 };
+  const mpTotal = mp.w + mp.l;
+  const mpRate  = mpTotal ? Math.round(mp.w / mpTotal * 100) + '%' : '—';
+  document.getElementById('stats-mp-record').querySelector('.stat-val').textContent = mp.w + 'W / ' + mp.l + 'L';
+  document.getElementById('stats-mp-rate').querySelector('.stat-val').innerHTML = '<span class="stats-rate">' + mpRate + '</span>';
+
+  const oppEl = document.getElementById('stats-mp-opponents');
+  if (s.mp && s.mp.recent && s.mp.recent.length) {
+    oppEl.innerHTML = s.mp.recent.slice(-8).reverse().map(r =>
+      `<span style="color:${r.won?'#4caf50':'#f44336'}">${r.won?'W':'L'}</span> vs <span style="color:#666">${r.opponent||'Guest'}</span> <span style="color:#333">${r.date||''}</span>`
+    ).join('<br>');
+  } else {
+    oppEl.textContent = 'No multiplayer matches yet';
+  }
+}
+
+// ── MP identity handshake (guest sends username+token to host after connect) ──
+let mpGuestUsername = null;
+let mpGuestToken    = null;
+
+function endGame() {
+  gameState = 'over';
+  if (animId) { cancelAnimationFrame(animId); animId = null; }
+  sfx.win(); paused = false;
+  let w;
+  const hostWon = scoreT > scoreB; // host = top paddle
+  if (scoreT > scoreB) w = 'PLAYER 1 WINS';
+  else if (mode === 'ai') w = 'COMPUTER WINS';
+  else if (mode === 'mp') w = 'PLAYER 2 WINS';
+  else w = 'PLAYER 2 WINS';
+
+  // Record stats
+  if (mode === 'ai') {
+    recordAIMatch(scoreT > scoreB); // player is top paddle vs computer
+  }
+  if (mode === 'mp' && mpMode === 'host') {
+    recordMPMatch(hostWon);
+  }
+
+  if (mpMode === 'host') {
+    if (mpConn && mpConn.open) mpConn.send({ t: 'gameover', w, sT: scoreT, sB: scoreB });
+    mpHostReady = false; mpGuestReady = false;
+    showOnly('mp-ready-screen');
+    document.getElementById('mp-ready-winner').textContent = w;
+    document.getElementById('mp-ready-score').textContent  = scoreT + '  ·  ' + scoreB;
+    document.getElementById('mp-ready-btn').disabled = false;
+    document.getElementById('mp-ready-btn').textContent = 'READY UP';
+    document.getElementById('mp-ready-btn').style.borderColor = '';
+    document.getElementById('mp-ready-btn').style.color = '';
+    updateReadyStatus();
+    setReadyPtsBtnsEnabled(true);
+  } else {
+    showOnly('game-over-screen');
+    document.getElementById('winner-text').textContent = w;
+    document.getElementById('final-score').textContent = scoreT + '  ·  ' + scoreB;
+  }
+}
+</script>
+</body>
+</html>
