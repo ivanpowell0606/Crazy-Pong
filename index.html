@@ -13,7 +13,7 @@
       background: #0a0a0a;
       display: flex; flex-direction: column;
       align-items: center; justify-content: flex-start;
-      padding-top: 6px;
+      padding-top: clamp(16px, 3vh, 48px);
       font-family: 'Courier New', monospace;
       color: #fff; user-select: none;
     }
@@ -506,6 +506,7 @@
         <button class="touch-btn" id="touch-right">►</button>
       </div>
       <p id="pause-hint">SPACE · pause &nbsp;&nbsp;ESC · leave</p>
+      <button id="fullscreen-btn" onclick="toggleFullscreen()" style="display:none;margin-top:4px;padding:4px 12px;border:1px solid #333;background:transparent;color:#444;font-family:'Courier New',monospace;font-size:0.55rem;letter-spacing:0.1rem;cursor:pointer;border-radius:2px;transition:color 0.12s,border-color 0.12s" onmouseover="this.style.color='#aaa';this.style.borderColor='#888'" onmouseout="this.style.color='#444';this.style.borderColor='#333'">⛶ FULLSCREEN</button>
       <!-- Desktop lab bottom bar — difficulty + controls info below canvas -->
       <div id="lab-desktop-bottom">
         <div style="display:flex;gap:6px;align-items:center">
@@ -1479,13 +1480,15 @@ function showOnly(id) {
   document.getElementById('mobile-pause').style.display    = (showTouch && mpMode === 'host' && inGame) ? 'block' : 'none';
   if (!inMPArea) { chatOpen = false; chatVisible = false; document.getElementById('chat-input-bar').style.display = 'none'; }
   if (inGame) { scaleGame(); setTimeout(scaleGame, 50); }
+  // Show fullscreen button only during gameplay on desktop
+  const fsBtn = document.getElementById('fullscreen-btn');
+  if (fsBtn) fsBtn.style.display = (id === 'game-screen' && !touchMode) ? 'block' : 'none';
   // Show mobile lab panel only in touch mode + lab mode
   const mobileLabPanel = document.getElementById('lab-mobile-panel');
   if (mobileLabPanel) mobileLabPanel.classList.toggle('lab-visible', id === 'game-screen' && labMode);
   // Show desktop lab bottom bar when in lab mode (non-touch)
   const desktopLabBottom = document.getElementById('lab-desktop-bottom');
   if (desktopLabBottom) desktopLabBottom.style.display = (id === 'game-screen' && labMode && !touchMode) ? 'flex' : 'none';
-  setTimeout(reportHeight, 100);
 }
 const showMode       = () => { labMode = false; showOnly('mode-screen'); };
 const showDifficulty = () => showOnly('difficulty-screen');
@@ -1679,43 +1682,45 @@ document.addEventListener('keydown',    e => {
   if (!['Shift','Control','Alt','Meta','CapsLock'].includes(e.key)) setTouchMode(false);
 }, { capture: true });
 
+// ── Fullscreen ───────────────────────────────────────────────────────────────
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen().catch(() => {});
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  const btn = document.getElementById('fullscreen-btn');
+  if (btn) btn.textContent = document.fullscreenElement ? '✕ EXIT FULL' : '⛶ FULLSCREEN';
+  setTimeout(scaleGame, 100);
+});
+
 // ── Mobile: scale canvas to fit screen ────────────────────────────────────────
 function scaleGame() {
   const canvasNativeW = 700;
   const canvasNativeH = 825;
+  const aspectRatio   = canvasNativeH / canvasNativeW;
 
-  const isMobile = touchMode || window.innerWidth < 600;
+  // Available space — full viewport, no iframe constraints
+  const availW = window.innerWidth  - 16;
+  const availH = window.innerHeight - 80; // headroom for any chrome above/below
 
-  let s;
-  if (isMobile) {
-    // Mobile: scale to fit a ~390px wide phone screen
-    // Canvas becomes ~370×436px, leaving room for title + buttons
-    const mobileW = Math.min(window.innerWidth - 16, 370);
-    s = mobileW / canvasNativeW;
-  } else {
-    // Desktop: iframe is 708×1095px
-    // Canvas at ~640×754 leaves ~340px for title, buttons, padding
-    s = 580 / canvasNativeW;
-  }
+  // Scale by whichever axis is tighter, never upscale beyond native
+  const scaleByW = availW  / canvasNativeW;
+  const scaleByH = availH  / canvasNativeH;
+  const s        = Math.min(scaleByW, scaleByH, 1);
 
   canvas.style.width  = Math.round(canvasNativeW * s) + 'px';
   canvas.style.height = Math.round(canvasNativeH * s) + 'px';
 }
-window.addEventListener('resize', () => { scaleGame(); reportHeight(); if (chatOpen) positionInputBar(); });
+window.addEventListener('resize', () => { scaleGame(); if (chatOpen) positionInputBar(); });
 // Apply initial state
 document.body.classList.toggle('touch-mode', touchMode);
 scaleGame();
 setTimeout(scaleGame, 100); // re-run after layout settles
 
-// Tell Google Sites iframe how tall the content is so it can resize
-function reportHeight() {
-  const h = document.documentElement.scrollHeight;
-  window.parent.postMessage({ type: 'resize', height: h }, '*');
-  // Also try the google sites specific format
-  window.parent.postMessage(JSON.stringify({ sentinel: 'amp', type: 'embed-size', height: h }), '*');
-}
-// Report on load with staggered delays to catch late layout shifts
-[100, 500, 1000].forEach(t => setTimeout(reportHeight, t));
+
 
 // Touch controls
 const tcLeft  = document.getElementById('touch-left');
@@ -2584,17 +2589,15 @@ async function sha256(str) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
-// ── Cookie helpers ───────────────────────────────────────────────────────────
-function setCookie(name, value, days) {
-  const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/; SameSite=None; Secure';
+// ── localStorage helpers (no iframe restrictions on GitHub Pages) ─────────────
+function setCookie(name, value) {
+  try { localStorage.setItem(name, value); } catch(e) {}
 }
 function getCookie(name) {
-  const match = document.cookie.match('(?:^|; )' + name + '=([^;]*)');
-  return match ? decodeURIComponent(match[1]) : null;
+  try { return localStorage.getItem(name); } catch(e) { return null; }
 }
 function deleteCookie(name) {
-  document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=None; Secure';
+  try { localStorage.removeItem(name); } catch(e) {}
 }
 
 // ── Auto-login from cookie on page load ──────────────────────────────────────
@@ -2707,8 +2710,8 @@ async function acctLogin() {
     // Save to cookie if remember me is checked (30 day expiry)
     const remember = document.getElementById('acct-remember');
     if (remember && remember.checked) {
-      setCookie('cpong_user', username, 30);
-      setCookie('cpong_token', hash, 30);
+      setCookie('cpong_user', username);
+      setCookie('cpong_token', hash);
     }
   } else {
     document.getElementById('acct-err').textContent = res.error || 'Login failed.';
