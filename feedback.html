@@ -321,12 +321,18 @@
       }
     }
 
-    // Auto-fill name if logged in via localStorage
+    // Auto-fill and lock name if logged in via localStorage
     try {
       const savedUser = localStorage.getItem('cpong_user');
       if (savedUser) {
         const nameEl = document.getElementById('fb-name');
-        if (nameEl) nameEl.value = savedUser;
+        if (nameEl) {
+          nameEl.value    = savedUser;
+          nameEl.readOnly = true;
+          nameEl.style.color  = '#555';
+          nameEl.style.cursor = 'not-allowed';
+          nameEl.title = 'Logged in as ' + savedUser;
+        }
       }
     } catch(e) {}
 
