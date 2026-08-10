@@ -321,6 +321,15 @@
       }
     }
 
+    // Auto-fill name if logged in via localStorage
+    try {
+      const savedUser = localStorage.getItem('cpong_user');
+      if (savedUser) {
+        const nameEl = document.getElementById('fb-name');
+        if (nameEl) nameEl.value = savedUser;
+      }
+    } catch(e) {}
+
     loadFeedback();
   </script>
 </body>
