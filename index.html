@@ -16,25 +16,25 @@
     :root { color-scheme: light; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: auto; overflow-x: hidden; overflow-y: hidden; }
-    html { font-size: clamp(11px, 1.8vh, 18px); } /* scales with viewport height */
+    html { font-size: clamp(14px, 2.2vh, 20px); } /* scales with viewport height */
     body {
       background: #0a0a0a;
       display: flex; flex-direction: column;
       align-items: center; justify-content: flex-start;
-      padding: clamp(4px, 1vh, 16px) 16px clamp(8px, 1.5vh, 20px);
+      padding: clamp(12px, 2.5vh, 40px) 16px clamp(20px, 3vh, 48px);
       font-family: 'Courier New', monospace;
       color: #fff; user-select: none;
     }
     h1 {
-      font-size: clamp(1.4rem, 5vh, 3rem); letter-spacing: 0.5rem;
-      margin-bottom: clamp(0.1rem, 0.5vh, 0.4rem); color: #fff;
+      font-size: clamp(2rem, 6vh, 3.2rem); letter-spacing: 0.5rem;
+      margin-bottom: clamp(0.2rem, 0.8vh, 0.5rem); color: #fff;
       text-shadow: 0 0 20px rgba(255,255,255,0.4);
     }
-    .screen { display: flex; flex-direction: column; align-items: center; gap: clamp(0.3rem, 1vh, 1rem); }
+    .screen { display: flex; flex-direction: column; align-items: center; gap: clamp(0.6rem, 1.4vh, 1.3rem); }
     #game-screen { gap: 0.5rem; }
-    .subtitle { font-size: clamp(0.55rem, 1.2vh, 0.85rem); color: #888; letter-spacing: 0.15rem; }
+    .subtitle { font-size: clamp(0.72rem, 1.4vh, 0.9rem); color: #888; letter-spacing: 0.15rem; }
     .btn {
-      padding: clamp(0.3rem, 0.9vh, 0.75rem) 2.4rem; border: 2px solid #fff;
+      padding: clamp(0.55rem, 1.2vh, 0.85rem) 2.4rem; border: 2px solid #fff;
       background: transparent; color: #fff;
       font-family: 'Courier New', monospace; font-size: 1rem;
       letter-spacing: 0.2rem; cursor: pointer;
