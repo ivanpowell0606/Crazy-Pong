@@ -1444,6 +1444,7 @@ let keys = {}, animId, lastTime = 0;
 let hitCount = 0, obstacles = [];
 let aiReverseDelay = 0;      // frames remaining before AI reacts to reverse
 let aiReverseConfused = false; // currently going wrong way due to reverse
+let aiReverseRecovery = 0;    // frames of hesitation after reverse wears off
 let aiGhostLocked = false;    // currently chasing ghost ball
 let aiGhostCheckTimer = 0;    // frames until AI re-evaluates ghost vs real
 
@@ -1630,7 +1631,7 @@ function cancelQuit() {
 
 function resetRound(dir) {
   ballSpeed = BASE_SPEED; hitCount = 0; obstacles = [];
-  aiReverseDelay = 0; aiReverseConfused = false; aiGhostLocked = false; aiGhostCheckTimer = 0;
+  aiReverseDelay = 0; aiReverseConfused = false; aiReverseRecovery = 0; aiGhostLocked = false; aiGhostCheckTimer = 0;
   powerups = []; puSpawnTimer = 0; curveSpin = 0; lastHitter = 'bottom';
   normalSpeed = BASE_SPEED; ghostBall = null; countdownTimer = labMode ? 0 : 90;
   ballTrail = []; ghostTrail = []; particles = []; shakeAmt = 0;
@@ -1814,7 +1815,7 @@ const padSpeed = () => BASE_PAD_SPD + (ballSpeed - BASE_SPEED) * PAD_SCALE;
 function updateTrail(trail, x, y) {
   if (settings.visuals.ballTrail) {
     trail.push({ x, y });
-    if (trail.length > 14) trail.shift();
+    if (trail.length > 10) trail.shift();
   } else if (trail.length) {
     trail.length = 0;
   }
@@ -1987,7 +1988,7 @@ function spawnPowerup() {
   const safeBot = H - PU_WALL_PAD - 10;
   const puCx  = 40 + Math.random() * (W - 80);
   const puCy  = safeTop + Math.random() * (safeBot - safeTop);
-  const speed = 0.55 + Math.random() * 0.65;
+  const speed = 1.2;
   const dir   = Math.random() * Math.PI * 2;
   return { cx: puCx, cy: puCy, vx: Math.cos(dir)*speed, vy: Math.sin(dir)*speed, type, age: 0 };
 }
@@ -2222,24 +2223,43 @@ function aiMove(dt, ps) {
   const center = paddleB.x + pw / 2;
 
   // ── REVERSE power-up confusion ────────────────────────────────────────────
+  // aiReverseDelay > 0  = still in hesitation window (going wrong way)
+  // aiReverseDelay == 0 and aiReverseConfused = true  = hesitation served, hard now adapts
+  // aiReverseDelay == -1 = hesitation already served (sentinel so it doesn't restart)
   const reversed = activeEffects.bottom.reversed > 0;
   if (reversed) {
-    if (aiReverseDelay > 0) {
-      // Still in confusion window — go the wrong way
+    if (aiReverseDelay === 0 && !aiReverseConfused) {
+      // Just got reversed for the first time — start hesitation
+      const hesitation = difficulty === 'easy'   ? 55
+                       : difficulty === 'medium'  ? 28
+                       : 10;
+      aiReverseDelay    = hesitation;
+      aiReverseConfused = true;
+    } else if (aiReverseDelay > 0) {
+      // Count down hesitation
       aiReverseDelay -= dt;
-      aiReverseConfused = true;
-    } else if (!aiReverseConfused) {
-      // Just got reversed — set confusion delay based on difficulty
-      const confusionFrames = difficulty === 'easy' ? 60
-                            : difficulty === 'medium' ? 25
-                            : (Math.random() < 0.06 ? 8 : 0); // hard: tiny rare fumble
-      aiReverseDelay   = confusionFrames;
-      aiReverseConfused = true;
+      if (aiReverseDelay <= 0) {
+        // Hesitation done — hard fully adapts, easy/medium stay confused
+        aiReverseDelay = -1; // sentinel: hesitation served
+        if (difficulty === 'hard') aiReverseConfused = false;
+      }
     }
+    // aiReverseDelay === -1: hesitation already served, state locked in
   } else {
-    // Reverse wore off — reset
-    aiReverseDelay    = 0;
-    aiReverseConfused = false;
+    // Reverse just wore off or has been off
+    if (aiReverseConfused || aiReverseDelay !== 0) {
+      // Was reversed — start recovery hesitation (AI still thinks it's reversed briefly)
+      const recovery = difficulty === 'easy'   ? 55
+                     : difficulty === 'medium'  ? 28
+                     : 10;
+      aiReverseRecovery = recovery;
+      aiReverseDelay    = 0;
+      aiReverseConfused = false;
+    }
+    if (aiReverseRecovery > 0) {
+      aiReverseRecovery -= dt;
+      // During recovery: still act confused (go wrong way)
+    }
   }
 
   // ── SPLIT (ghost ball) confusion ──────────────────────────────────────────
@@ -2275,13 +2295,14 @@ function aiMove(dt, ps) {
   }
 
   // ── Apply reverse confusion to target ────────────────────────────────────
-  if (aiReverseConfused && reversed) {
-    targetX = W - targetX; // thinks it needs to go opposite direction
+  const actingConfused = (aiReverseConfused && reversed) || aiReverseRecovery > 0;
+  if (actingConfused) {
+    targetX = W - targetX; // thinks controls are still reversed
   }
 
   // ── Move toward target ────────────────────────────────────────────────────
   // Speed reduced slightly when confused by power-ups (hesitation effect)
-  const confused  = aiReverseConfused || aiGhostLocked;
+  const confused  = aiReverseConfused || aiReverseRecovery > 0 || aiGhostLocked;
   const speedMult = confused
     ? (difficulty === 'easy' ? cfg.speedMult * 0.7 : cfg.speedMult * 0.88)
     : cfg.speedMult;
@@ -2351,16 +2372,39 @@ function draw() {
   // Ghost ball
   drawGhostBall();
 
-  // Ball trail
+  // Ball trail — single gradient stroke using createLinearGradient for smooth fade
   if (settings.visuals.ballTrail && ballTrail.length > 1) {
-    for (let i = 0; i < ballTrail.length; i++) {
-      const t = ballTrail[i];
-      const frac = i / ballTrail.length;
-      cx.globalAlpha = frac * 0.32;
-      cx.fillStyle = '#fff';
-      cx.beginPath(); cx.arc(t.x, t.y, BALL_R * (0.35 + 0.65 * frac), 0, Math.PI*2); cx.fill();
+    cx.save();
+    cx.lineCap = 'round'; cx.lineJoin = 'round';
+    const n = ballTrail.length;
+    // Draw as one continuous path with increasing width segments
+    // Use a small number of thickness steps for smoothness
+    const steps = 6;
+    for (let s = 0; s < steps; s++) {
+      const f0 = s / steps;
+      const f1 = (s + 1) / steps;
+      const i0 = Math.floor(f0 * (n - 1));
+      const i1 = Math.floor(f1 * (n - 1));
+      cx.beginPath();
+      cx.moveTo(ballTrail[i0].x, ballTrail[i0].y);
+      for (let i = i0 + 1; i <= i1; i++) {
+        // Use quadratic bezier through midpoints for smooth curve
+        if (i < n - 1) {
+          const mx = (ballTrail[i].x + ballTrail[i+1].x) / 2;
+          const my = (ballTrail[i].y + ballTrail[i+1].y) / 2;
+          cx.quadraticCurveTo(ballTrail[i].x, ballTrail[i].y, mx, my);
+        } else {
+          cx.lineTo(ballTrail[i].x, ballTrail[i].y);
+        }
+      }
+      const frac = (f0 + f1) / 2;
+      cx.strokeStyle = '#fff';
+      cx.globalAlpha = frac * frac * 0.42;
+      cx.lineWidth   = Math.max(0.5, BALL_R * 2 * frac);
+      cx.stroke();
     }
     cx.globalAlpha = 1;
+    cx.restore();
   }
 
   // Particles
@@ -2438,16 +2482,36 @@ function drawGhostBall() {
   const ghostCol = ghostBall.curveSpin ? '#88ccff' : '#fff';
   cx.save();
 
-  // Trail — identical to real ball trail
+  // Trail — smooth tapered stroke matching real ball
   if (settings.visuals.ballTrail && ghostTrail.length > 1) {
-    for (let i = 0; i < ghostTrail.length; i++) {
-      const t = ghostTrail[i];
-      const frac = i / ghostTrail.length;
-      cx.globalAlpha = frac * 0.32;
-      cx.fillStyle = ghostCol;
-      cx.beginPath(); cx.arc(t.x, t.y, BALL_R * (0.35 + 0.65 * frac), 0, Math.PI*2); cx.fill();
+    cx.save();
+    cx.lineCap = 'round'; cx.lineJoin = 'round';
+    const gn = ghostTrail.length;
+    const steps = 6;
+    for (let s = 0; s < steps; s++) {
+      const f0 = s / steps;
+      const f1 = (s + 1) / steps;
+      const i0 = Math.floor(f0 * (gn - 1));
+      const i1 = Math.floor(f1 * (gn - 1));
+      cx.beginPath();
+      cx.moveTo(ghostTrail[i0].x, ghostTrail[i0].y);
+      for (let i = i0 + 1; i <= i1; i++) {
+        if (i < gn - 1) {
+          const mx = (ghostTrail[i].x + ghostTrail[i+1].x) / 2;
+          const my = (ghostTrail[i].y + ghostTrail[i+1].y) / 2;
+          cx.quadraticCurveTo(ghostTrail[i].x, ghostTrail[i].y, mx, my);
+        } else {
+          cx.lineTo(ghostTrail[i].x, ghostTrail[i].y);
+        }
+      }
+      const frac = (f0 + f1) / 2;
+      cx.strokeStyle = '#c8d8f0';
+      cx.globalAlpha = frac * frac * 0.35;
+      cx.lineWidth   = Math.max(0.5, BALL_R * 2 * frac);
+      cx.stroke();
     }
     cx.globalAlpha = 1;
+    cx.restore();
   }
 
   // Pulsing glow halo — the only tell that separates it from the real ball
