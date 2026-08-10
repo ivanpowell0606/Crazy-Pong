@@ -1714,18 +1714,24 @@ function scaleGame() {
   const canvasNativeH = 825;
 
   let s;
+  // Touch controls height — only visible in touch mode during gameplay
+  const tcEl = document.getElementById('touch-controls');
+  const tcH  = (touchMode && tcEl) ? (tcEl.offsetHeight || 100) + 16 : 0;
+
   if (touchMode && window.innerWidth < 768) {
-    // Genuine mobile: scale to fit screen width with small margin
+    // Genuine mobile: scale to fit screen width, leave room for touch controls
     const mobileW = Math.min(window.innerWidth - 16, canvasNativeW);
-    s = mobileW / canvasNativeW;
+    const scaleByW = mobileW / canvasNativeW;
+    const scaleByH = (window.innerHeight - 120 - tcH) / canvasNativeH;
+    s = Math.min(scaleByW, scaleByH);
   } else {
-    // Desktop: account for sidebar width and lab bottom bar
-    const sidebarW  = labMode ? 244 : 0;
-    const labBottom = labMode
+    // Desktop or touchscreen laptop: account for sidebar, lab bar, and touch controls if visible
+    const sidebarW  = labMode && !touchMode ? 244 : 0;
+    const labBottom = labMode && !touchMode
       ? (document.getElementById('lab-desktop-bottom').offsetHeight || 120) + 16
       : 0;
     const availW = window.innerWidth  - sidebarW - 48;
-    const availH = window.innerHeight - 120 - labBottom;
+    const availH = window.innerHeight - 120 - labBottom - tcH;
     const scaleByW = availW / canvasNativeW;
     const scaleByH = availH / canvasNativeH;
     s = Math.min(scaleByW, scaleByH, 1);
