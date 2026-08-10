@@ -68,7 +68,7 @@
     #pause-hint { font-size: 0.68rem; color: #444; letter-spacing: 0.1rem; }
 
     /* ── Touch controls ── */
-    #touch-controls {
+    #touch-controls, #touch-controls-p2 {
       display: none; flex-direction: row;
       width: 100%; gap: 16px;
       padding: 10px 0 4px;
@@ -279,7 +279,7 @@
       display: none; flex-direction: row; align-items: center;
       width: 100%; padding: 0 0 4px; gap: 8px;
     }
-    #mobile-chat, #mobile-pause, #mobile-quit {
+    #mobile-chat, #mobile-pause, #mobile-pause-ai, #mobile-quit {
       display: none; background: transparent; border: 1px solid #333;
       color: #555; font-family: 'Courier New', monospace; font-size: 0.65rem;
       letter-spacing: 0.08rem; padding: 6px 10px; cursor: pointer; border-radius: 3px;
@@ -507,9 +507,15 @@
   <div id="game-layout" style="flex-wrap:wrap">
     <div id="canvas-wrap">
       <div id="mobile-btn-row">
+        <button id="fullscreen-btn" onclick="toggleFullscreen()" style="display:none;padding:4px 10px;border:1px solid #333;background:transparent;color:#444;font-family:'Courier New',monospace;font-size:0.55rem;letter-spacing:0.1rem;cursor:pointer;border-radius:2px;transition:color 0.12s,border-color 0.12s" onmouseover="this.style.color='#aaa';this.style.borderColor='#888'" onmouseout="this.style.color='#444';this.style.borderColor='#333'">⛶ FULL</button>
+        <button id="mobile-pause-ai" onclick="if(!mpMode)paused=!paused">⏸ PAUSE</button>
         <button id="mobile-chat"  onclick="toggleChat()">💬 CHAT</button>
         <button id="mobile-pause" onclick="if(mpMode==='host')toggleMPPause()">⏸ PAUSE</button>
         <button id="mobile-quit"  onclick="showQuitConfirm()">✕ QUIT</button>
+      </div>
+      <div id="touch-controls-p2">
+        <button class="touch-btn" id="touch-left-p2">◄</button>
+        <button class="touch-btn" id="touch-right-p2">►</button>
       </div>
       <canvas id="c" width="700" height="825"></canvas>
       <div id="touch-controls">
@@ -517,7 +523,6 @@
         <button class="touch-btn" id="touch-right">►</button>
       </div>
       <p id="pause-hint">SPACE · pause &nbsp;&nbsp;ESC · leave</p>
-      <button id="fullscreen-btn" onclick="toggleFullscreen()" style="display:none;margin-top:4px;padding:4px 12px;border:1px solid #333;background:transparent;color:#444;font-family:'Courier New',monospace;font-size:0.55rem;letter-spacing:0.1rem;cursor:pointer;border-radius:2px;transition:color 0.12s,border-color 0.12s" onmouseover="this.style.color='#aaa';this.style.borderColor='#888'" onmouseout="this.style.color='#444';this.style.borderColor='#333'">⛶ FULLSCREEN</button>
       <!-- Desktop lab bottom bar — difficulty + controls info below canvas -->
       <div id="lab-desktop-bottom">
         <div style="display:flex;gap:6px;align-items:center">
@@ -1483,9 +1488,12 @@ function showOnly(id) {
   const inGame = id === 'game-screen';
   const showTouch = inGame && touchMode;
   document.getElementById('touch-controls').style.display = showTouch ? 'flex' : 'none';
+  // P2 touch controls only in 2P touch mode
+  const tcP2 = document.getElementById('touch-controls-p2');
+  if (tcP2) tcP2.style.display = (showTouch && mode === '2p') ? 'flex' : 'none';
   // Mobile button row — sits above canvas in layout flow
   const inMPArea = (id === 'game-screen' || id === 'mp-ready-screen') && mpMode;
-  document.getElementById('mobile-btn-row').style.display  = showTouch ? 'flex' : 'none';
+  document.getElementById('mobile-btn-row').style.display  = inGame ? 'flex' : 'none';
   document.getElementById('mobile-quit').style.display     = showTouch ? 'block' : 'none';
   document.getElementById('mobile-chat').style.display     = (showTouch && inMPArea) ? 'block' : 'none';
   document.getElementById('mobile-pause').style.display    = (showTouch && mpMode === 'host' && inGame) ? 'block' : 'none';
@@ -1493,7 +1501,9 @@ function showOnly(id) {
   if (inGame) { scaleGame(); setTimeout(scaleGame, 50); }
   // Show fullscreen button only during gameplay on desktop
   const fsBtn = document.getElementById('fullscreen-btn');
-  if (fsBtn) fsBtn.style.display = (id === 'game-screen' && !touchMode) ? 'block' : 'none';
+  if (fsBtn) fsBtn.style.display = (id === 'game-screen') ? 'block' : 'none';
+  const pauseAiBtn = document.getElementById('mobile-pause-ai');
+  if (pauseAiBtn) pauseAiBtn.style.display = (id === 'game-screen' && touchMode && mode === 'ai') ? 'block' : 'none';
   // Show mobile lab panel only in touch mode + lab mode
   const mobileLabPanel = document.getElementById('lab-mobile-panel');
   if (mobileLabPanel) mobileLabPanel.classList.toggle('lab-visible', id === 'game-screen' && labMode);
@@ -1751,25 +1761,38 @@ setTimeout(scaleGame, 100); // re-run after layout settles
 // Touch controls
 const tcLeft  = document.getElementById('touch-left');
 const tcRight = document.getElementById('touch-right');
-function setTouch(l, r) {
+const tcLeftP2  = document.getElementById('touch-left-p2');
+const tcRightP2 = document.getElementById('touch-right-p2');
+
+// Multi-touch safe: track each button's pressed state independently
+const touchState = { p1l: false, p1r: false, p2l: false, p2r: false };
+
+function applyTouchState() {
   if (mode === '2p') {
-    // 2P: touch controls bottom paddle — Arrow keys only
-    keys['ArrowLeft']  = l;
-    keys['ArrowRight'] = r;
-    keys['a'] = keys['A'] = keys['d'] = keys['D'] = false;
+    // Bottom paddle (P2) — Arrow keys
+    keys['ArrowLeft']  = touchState.p1l;
+    keys['ArrowRight'] = touchState.p1r;
+    // Top paddle (P1) — A/D keys
+    keys['a'] = keys['A'] = touchState.p2l;
+    keys['d'] = keys['D'] = touchState.p2r;
   } else {
-    // AI / MP guest: touch controls top/own paddle — A/D keys only
-    keys['a'] = keys['A'] = l;
-    keys['d'] = keys['D'] = r;
+    // AI / MP: bottom touch controls own paddle — A/D keys
+    keys['a'] = keys['A'] = touchState.p1l;
+    keys['d'] = keys['D'] = touchState.p1r;
     keys['ArrowLeft'] = keys['ArrowRight'] = false;
   }
 }
-tcLeft.addEventListener('touchstart',  e => { e.preventDefault(); setTouch(true,  false); }, { passive: false });
-tcLeft.addEventListener('touchend',    e => { e.preventDefault(); setTouch(false, keys['ArrowRight']); }, { passive: false });
-tcLeft.addEventListener('touchcancel', e => { e.preventDefault(); setTouch(false, keys['ArrowRight']); }, { passive: false });
-tcRight.addEventListener('touchstart',  e => { e.preventDefault(); setTouch(keys['ArrowLeft'], true);  }, { passive: false });
-tcRight.addEventListener('touchend',    e => { e.preventDefault(); setTouch(keys['ArrowLeft'], false); }, { passive: false });
-tcRight.addEventListener('touchcancel', e => { e.preventDefault(); setTouch(keys['ArrowLeft'], false); }, { passive: false });
+
+function addTouchBtn(el, stateKey) {
+  el.addEventListener('touchstart',  e => { e.preventDefault(); touchState[stateKey] = true;  applyTouchState(); }, { passive: false });
+  el.addEventListener('touchend',    e => { e.preventDefault(); touchState[stateKey] = false; applyTouchState(); }, { passive: false });
+  el.addEventListener('touchcancel', e => { e.preventDefault(); touchState[stateKey] = false; applyTouchState(); }, { passive: false });
+}
+
+addTouchBtn(tcLeft,   'p1l');
+addTouchBtn(tcRight,  'p1r');
+addTouchBtn(tcLeftP2,  'p2l');
+addTouchBtn(tcRightP2, 'p2r');
 
 function loop(ts) {
   animId = requestAnimationFrame(loop);
