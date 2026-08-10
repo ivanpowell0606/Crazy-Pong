@@ -1155,7 +1155,7 @@ function sendState() {
       sT: scoreT, sB: scoreB,
       ef: activeEffects,
       pu: powerups.map(p => ({ cx:p.cx, cy:p.cy, vx:p.vx, vy:p.vy, type:p.type, age:p.age })),
-      ob: obstacles.map(o => ({ cx:o.cx, cy:o.cy, vx:o.vx, vy:o.vy, verts:o.verts, baseR:o.baseR, age:o.age })),
+      ob: obstacles.map(o => ({ cx:o.cx, cy:o.cy, vx:o.vx, vy:o.vy, baseVerts:o.baseVerts, baseR:o.baseR, boundR:o.boundR, angle:o.angle, angVel:o.angVel, age:o.age })),
     });
   }
 }
@@ -1214,19 +1214,28 @@ function applyFull(d) {
   scoreT = d.sT; scoreB = d.sB;
   activeEffects = d.ef;
 
-  // Power-ups — lerp existing, snap new ones
-  if (d.pu) {
-    powerups = d.pu.map((p, i) => {
-      const ex = powerups[i];
-      if (ex && ex.type === p.type) {
-        ex.cx += (p.cx - ex.cx) * 0.3;
-        ex.cy += (p.cy - ex.cy) * 0.3;
-        ex.vx = p.vx; ex.vy = p.vy;
-        ex.age = p.age;
-        return ex;
+  // Power-ups — sync by matching type+position, don't rebuild array blindly
+  if (d.pu !== undefined) {
+    if (d.pu.length === 0) {
+      powerups = [];
+    } else {
+      // Match by type — avoids index mismatch when powerups are collected mid-sync
+      const newPUs = [];
+      for (const p of d.pu) {
+        const ex = powerups.find(e => e.type === p.type &&
+          Math.abs(e.cx - p.cx) < 100 && Math.abs(e.cy - p.cy) < 100);
+        if (ex) {
+          ex.cx += (p.cx - ex.cx) * 0.3;
+          ex.cy += (p.cy - ex.cy) * 0.3;
+          ex.vx = p.vx; ex.vy = p.vy;
+          ex.age = p.age;
+          newPUs.push(ex);
+        } else {
+          newPUs.push({ ...p });
+        }
       }
-      return { ...p };
-    });
+      powerups = newPUs;
+    }
   }
 
   // Obstacles — lerp position, always sync velocity so prediction works
@@ -1234,17 +1243,34 @@ function applyFull(d) {
     obstacles = d.ob.map((o, i) => {
       const ex = obstacles[i];
       if (ex && Math.abs(ex.cx - o.cx) < 80 && Math.abs(ex.cy - o.cy) < 80) {
+        // Update existing obstacle — sync position, velocity, angle
         ex.cx += (o.cx - ex.cx) * 0.3;
         ex.cy += (o.cy - ex.cy) * 0.3;
-        ex.vx = o.vx; ex.vy = o.vy; // always sync velocity
+        ex.vx = o.vx; ex.vy = o.vy;
+        ex.angle = o.angle; ex.angVel = o.angVel;
         ex.age = o.age;
+        // Recompute rotated verts from baseVerts + synced angle
+        if (o.baseVerts && o.baseVerts.length) {
+          ex.baseVerts = o.baseVerts;
+          const cos = Math.cos(ex.angle), sin = Math.sin(ex.angle);
+          ex.verts = ex.baseVerts.map(v => ({
+            x: ex.cx + v.x*cos - v.y*sin,
+            y: ex.cy + v.x*sin + v.y*cos,
+          }));
+        }
         return ex;
       }
-      // New obstacle — build full object
+      // New obstacle — build full object from baseVerts
+      const bv  = o.baseVerts || [];
+      const cos = Math.cos(o.angle || 0), sin = Math.sin(o.angle || 0);
+      const verts = bv.map(v => ({
+        x: o.cx + v.x*cos - v.y*sin,
+        y: o.cy + v.x*sin + v.y*cos,
+      }));
       return {
         cx: o.cx, cy: o.cy, vx: o.vx, vy: o.vy,
-        verts: o.verts, baseR: o.baseR, boundR: o.baseR,
-        age: o.age, trail: [], angle: 0, angVel: 0, baseVerts: [],
+        baseVerts: bv, verts, baseR: o.baseR, boundR: o.boundR || o.baseR,
+        age: o.age, trail: [], angle: o.angle || 0, angVel: o.angVel || 0,
       };
     });
   }
@@ -1926,13 +1952,21 @@ function guestPredict(dt) {
 
   // Predict obstacle movement using synced velocity
   for (const obs of obstacles) {
-    if (!obs.vx && !obs.vy) continue;
     obs.cx += obs.vx * dt;
     obs.cy += obs.vy * dt;
+    obs.angle = (obs.angle || 0) + (obs.angVel || 0) * dt;
     if (obs.cx - obs.baseR < 0)   { obs.cx = obs.baseR;     obs.vx =  Math.abs(obs.vx); }
     if (obs.cx + obs.baseR > W)   { obs.cx = W - obs.baseR; obs.vx = -Math.abs(obs.vx); }
     if (obs.cy - obs.baseR < 0)   { obs.cy = obs.baseR;     obs.vy =  Math.abs(obs.vy); }
     if (obs.cy + obs.baseR > H)   { obs.cy = H - obs.baseR; obs.vy = -Math.abs(obs.vy); }
+    // Recompute rotated verts every frame so asteroid rotates smoothly
+    if (obs.baseVerts && obs.baseVerts.length) {
+      const cos = Math.cos(obs.angle), sin = Math.sin(obs.angle);
+      obs.verts = obs.baseVerts.map(v => ({
+        x: obs.cx + v.x*cos - v.y*sin,
+        y: obs.cy + v.x*sin + v.y*cos,
+      }));
+    }
     if (!obs.trail) obs.trail = [];
     updateTrail(obs.trail, obs.cx, obs.cy);
   }
