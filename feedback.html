@@ -104,7 +104,7 @@
   </style>
 </head>
 <body>
-  <h1>CRAZY PONG</h1>
+  <h1 id="title-tap" onclick="titleTap()" style="cursor:default">CRAZY PONG</h1>
   <p class="subtitle">PLAYER FEEDBACK</p>
   <a class="back-link" href="/">← BACK TO GAME</a>
 
@@ -123,7 +123,7 @@
     <p id="loading">LOADING FEEDBACK…</p>
   </div>
 
-  <div id="admin-panel">
+  <div id="admin-panel" style="display:none">
     <p class="admin-label">ADMIN ACCESS</p>
     <div class="admin-row">
       <input class="admin-input" id="admin-pass" type="text"
@@ -200,7 +200,7 @@
         const data = await res.json();
         if (data.ok) {
           document.body.classList.add('admin-mode');
-          document.getElementById('admin-panel').style.display = 'none';
+          document.getElementById('admin-panel').style.display = 'none'; document.getElementById('admin-err').textContent = '';
           sessionStorage.setItem('cpong_admin', pass);
         } else {
           errEl.textContent = 'Incorrect password.';
@@ -235,7 +235,26 @@
     const savedAdmin = sessionStorage.getItem('cpong_admin');
     if (savedAdmin) {
       document.body.classList.add('admin-mode');
-      document.getElementById('admin-panel').style.display = 'none';
+      // Panel stays hidden — admin mode is active silently
+    }
+
+    // ── Secret admin reveal — click title 5 times quickly ───────────────────
+    let tapCount = 0, tapTimer = null;
+    function titleTap() {
+      tapCount++;
+      clearTimeout(tapTimer);
+      if (tapCount >= 5) {
+        tapCount = 0;
+        const panel = document.getElementById('admin-panel');
+        if (document.body.classList.contains('admin-mode')) {
+          // Already admin — hide panel again on 5 more taps
+          panel.style.display = 'none';
+        } else {
+          panel.style.display = 'flex';
+        }
+      } else {
+        tapTimer = setTimeout(() => { tapCount = 0; }, 1200);
+      }
     }
 
     loadFeedback();
