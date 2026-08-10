@@ -1115,7 +1115,15 @@ function startMPGameAsGuest() {
   const mobileChatG = document.getElementById('mobile-chat');
   if (mobileChatG) mobileChatG.textContent = '💬 CHAT';
   showOnly('game-screen');
-  scoreT = scoreB = 0; resetRound(0);
+  // Don't call resetRound — guest starts with null state and waits for
+  // first snap/core packet from host to initialize. This prevents the
+  // guest generating random ball velocity that immediately desyncs.
+  scoreT = scoreB = 0;
+  ball = null; paddleT = null; paddleB = null;
+  velX = 0; velY = 0; obstacles = []; powerups = [];
+  ghostBall = null; ballTrail = []; ghostTrail = [];
+  curveSpin = 0; ballSpeed = BASE_SPEED;
+  activeEffects = freshEffects(); countdownTimer = 90;
   gameState = 'playing'; paused = false;
   if (animId) cancelAnimationFrame(animId);
   lastTime = performance.now();
@@ -1948,7 +1956,7 @@ addTouchBtn(tcRightP2, 'p2r');
 // Runs every frame to keep ball/obstacles moving smoothly between host packets.
 // Host packets correct any drift via applyCore (every frame) and applyFull (every 6).
 function guestPredict(dt) {
-  if (!ball || !paddleB) return;
+  if (!ball || !paddleB || !paddleT) return;
 
   // Move guest paddle instantly — zero input lag
   const ps     = padSpeed();
