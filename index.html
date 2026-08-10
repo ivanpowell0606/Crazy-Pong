@@ -15,7 +15,7 @@
   <style>
     :root { color-scheme: light; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: auto; overflow-x: hidden; overflow-y: hidden; }
+    html, body { height: 100%; overflow: hidden; }
     html { font-size: clamp(15px, 1.6vw, 19px); } /* scales with viewport width */
     body {
       background: #0a0a0a;
@@ -1717,7 +1717,7 @@ function scaleGame() {
     ? (document.getElementById('lab-desktop-bottom').offsetHeight || 120) + 16
     : 0;
   const availW = window.innerWidth  - 280; // leave room for sidebar
-  const availH = window.innerHeight - 80 - labBottom;
+  const availH = window.innerHeight - 120 - labBottom;
 
   // Scale by whichever axis is tighter, never upscale beyond native
   const scaleByW = availW  / canvasNativeW;
