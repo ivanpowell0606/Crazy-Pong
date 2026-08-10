@@ -427,6 +427,7 @@
 <div id="mode-screen" class="screen">
   <h1>CRAZY PONG</h1>
   <p class="subtitle">THE CLASSIC PONG ARCADE GAME WITH A TWIST</p>
+  <p style="font-size:0.52rem;color:#666;letter-spacing:0.12rem;margin-top:-0.2rem">⚠ GAME IS CURRENTLY IN DEVELOPMENT — SUBJECT TO CHANGE</p>
   <div style="height:0.3rem"></div>
   <div style="position:relative;display:inline-block">
     <button class="mode-side-btn left" onclick="openAcctOverlay()" id="login-mode-btn">LOGIN</button>
@@ -438,8 +439,8 @@
     <button class="btn" onclick="showOnly('2p-screen')">2 PLAYERS</button>
   </div>
   <button class="btn" onclick="showMP()" style="border-color:#40c4ff;color:#40c4ff" onmouseover="this.style.background='#40c4ff';this.style.color='#0a0a0a'" onmouseout="this.style.background='transparent';this.style.color='#40c4ff'">MULTIPLAYER</button>
-  <button class="btn btn-back" onclick="showSettings()" style="margin-top:0.1rem;letter-spacing:0.2rem">⚙ &nbsp;SETTINGS</button>
   <button class="btn" onclick="window.location.href='/feedback.html'" style="border-color:#444;color:#555;margin-top:0.1rem;letter-spacing:0.2rem">✉ &nbsp;FEEDBACK</button>
+  <button class="btn btn-back" onclick="showSettings()" style="margin-top:0.1rem;letter-spacing:0.2rem">⚙ &nbsp;SETTINGS</button>
   <div style="height:0.2rem"></div>
   <div class="controls-hint">
     <strong style="color:#666">VS COMPUTER</strong><br>A / D &nbsp;·&nbsp; ← / →<br><br>
@@ -1713,8 +1714,8 @@ function scaleGame() {
   const canvasNativeH = 825;
 
   let s;
-  if (touchMode) {
-    // Mobile: scale to fit screen width with small margin
+  if (touchMode && window.innerWidth < 768) {
+    // Genuine mobile: scale to fit screen width with small margin
     const mobileW = Math.min(window.innerWidth - 16, canvasNativeW);
     s = mobileW / canvasNativeW;
   } else {
