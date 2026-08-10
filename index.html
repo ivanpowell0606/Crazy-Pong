@@ -1712,17 +1712,23 @@ function scaleGame() {
   const canvasNativeW = 700;
   const canvasNativeH = 825;
 
-  // Available space — subtract extra room for lab bottom bar when in lab mode
-  const labBottom = labMode && !touchMode
-    ? (document.getElementById('lab-desktop-bottom').offsetHeight || 120) + 16
-    : 0;
-  const availW = window.innerWidth  - 280; // leave room for sidebar
-  const availH = window.innerHeight - 120 - labBottom;
-
-  // Scale by whichever axis is tighter, never upscale beyond native
-  const scaleByW = availW  / canvasNativeW;
-  const scaleByH = availH  / canvasNativeH;
-  const s        = Math.min(scaleByW, scaleByH, 1);
+  let s;
+  if (touchMode) {
+    // Mobile: scale to fit screen width with small margin
+    const mobileW = Math.min(window.innerWidth - 16, canvasNativeW);
+    s = mobileW / canvasNativeW;
+  } else {
+    // Desktop: account for sidebar width and lab bottom bar
+    const sidebarW  = labMode ? 244 : 0;
+    const labBottom = labMode
+      ? (document.getElementById('lab-desktop-bottom').offsetHeight || 120) + 16
+      : 0;
+    const availW = window.innerWidth  - sidebarW - 48;
+    const availH = window.innerHeight - 120 - labBottom;
+    const scaleByW = availW / canvasNativeW;
+    const scaleByH = availH / canvasNativeH;
+    s = Math.min(scaleByW, scaleByH, 1);
+  }
 
   canvas.style.width  = Math.round(canvasNativeW * s) + 'px';
   canvas.style.height = Math.round(canvasNativeH * s) + 'px';
