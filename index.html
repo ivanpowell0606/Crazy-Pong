@@ -32,6 +32,7 @@
     }
     .screen { display: flex; flex-direction: column; align-items: center; gap: 0.95rem; }
     #game-screen { gap: 0.5rem; }
+    body.lab-active #game-screen { overflow-y: auto; max-height: 100vh; padding: 8px 0 16px; }
     .subtitle { font-size: 0.85rem; color: #888; letter-spacing: 0.15rem; }
     .btn {
       padding: 0.75rem 2.4rem; border: 2px solid #fff;
@@ -1499,7 +1500,7 @@ function showOnly(id) {
   const desktopLabBottom = document.getElementById('lab-desktop-bottom');
   if (desktopLabBottom) desktopLabBottom.style.display = (id === 'game-screen' && labMode && !touchMode) ? 'flex' : 'none';
 }
-const showMode       = () => { labMode = false; showOnly('mode-screen'); };
+const showMode       = () => { labMode = false; document.body.classList.remove('lab-active'); showOnly('mode-screen'); };
 const showDifficulty = () => showOnly('difficulty-screen');
 
 // ── Start / reset ─────────────────────────────────────────────────────────────
@@ -1558,6 +1559,7 @@ function syncMobileLabPills() {
 
 function startLab() {
   labMode = true; mode = 'ai'; difficulty = 'medium';
+  document.body.classList.add('lab-active');
   labResetAll();
   showOnly('game-screen');
   scoreT = scoreB = 0;
@@ -1709,11 +1711,13 @@ document.addEventListener('fullscreenchange', () => {
 function scaleGame() {
   const canvasNativeW = 700;
   const canvasNativeH = 825;
-  const aspectRatio   = canvasNativeH / canvasNativeW;
 
-  // Available space — full viewport, no iframe constraints
-  const availW = window.innerWidth  - 16;
-  const availH = window.innerHeight - 80; // headroom for any chrome above/below
+  // Available space — subtract extra room for lab bottom bar when in lab mode
+  const labBottom = labMode && !touchMode
+    ? (document.getElementById('lab-desktop-bottom').offsetHeight || 120) + 16
+    : 0;
+  const availW = window.innerWidth  - 280; // leave room for sidebar
+  const availH = window.innerHeight - 80 - labBottom;
 
   // Scale by whichever axis is tighter, never upscale beyond native
   const scaleByW = availW  / canvasNativeW;
