@@ -1628,6 +1628,33 @@ function getPaddleW(isTop) {
 }
 
 // ── Screens ───────────────────────────────────────────────────────────────────
+// Cache frequently accessed UI elements — must be after all HTML is parsed
+// (this script tag is at the end of body so all elements exist here)
+const UI = {
+  labSidebar:      document.getElementById('lab-sidebar'),
+  pauseHint:       document.getElementById('pause-hint'),
+  touchControls:   document.getElementById('touch-controls'),
+  touchControlsP2: document.getElementById('touch-controls-p2'),
+  mobileBtnRow:    document.getElementById('mobile-btn-row'),
+  mobileQuit:      document.getElementById('mobile-quit'),
+  mobileChat:      document.getElementById('mobile-chat'),
+  mobilePause:     document.getElementById('mobile-pause'),
+  mobilePauseAi:   document.getElementById('mobile-pause-ai'),
+  fullscreenBtn:   document.getElementById('fullscreen-btn'),
+  mobileLabPanel:  document.getElementById('lab-mobile-panel'),
+  desktopLabBot:   document.getElementById('lab-desktop-bottom'),
+  chatInputBar:    document.getElementById('chat-input-bar'),
+  volSlider:       document.getElementById('vol-slider'),
+  acctErr:         document.getElementById('acct-err'),
+  acctUser:        document.getElementById('acct-user'),
+  acctPass:        document.getElementById('acct-pass'),
+  acctRemember:    document.getElementById('acct-remember'),
+  acctSaveStatus:  document.getElementById('acct-save-status'),
+  acctDisplayName: document.getElementById('acct-display-name'),
+  acctLoggedout:   document.getElementById('acct-loggedout'),
+  acctLoggedin:    document.getElementById('acct-loggedin'),
+};
+
 function showOnly(id) {
   currentScreen = id;
   SCREENS.forEach(s => screenEls[s].style.display = s===id ? 'flex' : 'none');
@@ -1822,32 +1849,6 @@ const SCREENS = ['mode-screen','difficulty-screen','2p-screen','game-screen',
 const screenEls = {};
 SCREENS.forEach(id => screenEls[id] = document.getElementById(id));
 let currentScreen = 'mode-screen';
-
-// Cache frequently accessed UI elements used in showOnly and elsewhere
-const UI = {
-  labSidebar:      document.getElementById('lab-sidebar'),
-  pauseHint:       document.getElementById('pause-hint'),
-  touchControls:   document.getElementById('touch-controls'),
-  touchControlsP2: document.getElementById('touch-controls-p2'),
-  mobileBtnRow:    document.getElementById('mobile-btn-row'),
-  mobileQuit:      document.getElementById('mobile-quit'),
-  mobileChat:      document.getElementById('mobile-chat'),
-  mobilePause:     document.getElementById('mobile-pause'),
-  mobilePauseAi:   document.getElementById('mobile-pause-ai'),
-  fullscreenBtn:   document.getElementById('fullscreen-btn'),
-  mobileLabPanel:  document.getElementById('lab-mobile-panel'),
-  desktopLabBot:   document.getElementById('lab-desktop-bottom'),
-  chatInputBar:    UI.chatInputBar,
-  volSlider:       UI.volSlider,
-  acctErr:         UI.acctErr,
-  acctUser:        UI.acctUser,
-  acctPass:        UI.acctPass,
-  acctRemember:    UI.acctRemember,
-  acctSaveStatus:  UI.acctSaveStatus,
-  acctDisplayName: UI.acctDisplayName,
-  acctLoggedout:   UI.acctLoggedout,
-  acctLoggedin:    UI.acctLoggedin,
-};
 
 // ── Input mode: touch vs keyboard — switches dynamically ──────────────────────
 // true = touch mode (shows touch controls, scales canvas)
