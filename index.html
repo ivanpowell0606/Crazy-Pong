@@ -852,7 +852,7 @@ const PAD_SCALE       = 0.65;
 const HITS_PER_OBS    = 6;
 const MAX_OBS         = 4;
 const OBS_FADE        = 50;
-const MAX_TRAIL       = 32;
+const MAX_TRAIL       = 48;
 const OBS_WALL_TOP    = 10;
 const OBS_WALL_BOT    = H - 10;
 const OBS_MAX_ANGVEL  = 0.10;
@@ -2538,19 +2538,29 @@ function drawEffectBadge(x, y, type, frac) {
 
 // ── Draw obstacle helpers ─────────────────────────────────────────────────────
 function drawObstacleTrail(obs) {
-  const speed = Math.sqrt(obs.vx*obs.vx + obs.vy*obs.vy);
-  if (speed < 0.08) return;
-  const alpha   = Math.min(1, obs.age / OBS_FADE);
-  const trailLen= speed * 42, trailW = obs.baseR * 0.8;
-  const dx = obs.vx/speed, dy = obs.vy/speed;
-  const tx = obs.cx - dx*trailLen, ty = obs.cy - dy*trailLen;
-  const grd = cx.createLinearGradient(obs.cx, obs.cy, tx, ty);
-  grd.addColorStop(0,   `rgba(160,145,240,${alpha*0.75})`);
-  grd.addColorStop(0.35,`rgba(140,125,220,${alpha*0.35})`);
-  grd.addColorStop(1,   `rgba(130,115,210,0)`);
+  if (!obs.trail || obs.trail.length < 2) return;
+  const alpha = Math.min(1, obs.age / OBS_FADE);
+  const trail = obs.trail;
+  const n     = trail.length;
+
   cx.save();
-  cx.beginPath(); cx.moveTo(obs.cx,obs.cy); cx.lineTo(tx,ty);
-  cx.strokeStyle=grd; cx.lineWidth=trailW; cx.lineCap='round'; cx.stroke();
+  cx.lineCap  = 'round';
+  cx.lineJoin = 'round';
+
+  // Draw trail as segments from oldest to newest, fading in opacity and width
+  for (let i = 1; i < n; i++) {
+    const frac = i / n; // 0 = oldest (tail), 1 = newest (head)
+    const a    = frac * frac * alpha * 0.72; // quadratic fade toward tail
+    const w    = obs.baseR * 1.8 * frac; // scales directly with asteroid size
+    const r    = Math.round(160 + frac * 20);
+    const g    = Math.round(145 + frac * 10);
+    cx.beginPath();
+    cx.moveTo(trail[i-1].x, trail[i-1].y);
+    cx.lineTo(trail[i].x,   trail[i].y);
+    cx.strokeStyle = `rgba(${r},${g},240,${a})`;
+    cx.lineWidth   = w;
+    cx.stroke();
+  }
   cx.restore();
 }
 
@@ -2670,7 +2680,7 @@ async function tryAutoLogin() {
   } catch(e) {}
 }
 // Run after a short delay so the UI is ready
-setTimeout(tryAutoLogin, 300);
+setTimeout(tryAutoLogin, 800);
 
 // ── API call helper ───────────────────────────────────────────────────────────
 async function acctAPI(action, payload = {}) {
@@ -2811,11 +2821,13 @@ function gatherSettings() {
 // ── Apply settings loaded from account ───────────────────────────────────────
 function applyLoadedSettings(s) {
   if (!s) return;
+  // Use _orig functions to bypass auto-save triggers during load
   if (s.volume !== undefined) {
-    volume = s.volume;
-    document.getElementById('vol-slider').value = volume;
+    volume = parseFloat(s.volume);
+    const slider = document.getElementById('vol-slider');
+    if (slider) slider.value = volume;
   }
-  if (s.winScore) setWinScore(s.winScore);
+  if (s.winScore && _origSetWinScore) _origSetWinScore(s.winScore);
   if (s.powerups) {
     for (const key of Object.keys(settings.powerups)) {
       if (s.powerups[key] !== undefined) {
@@ -2836,16 +2848,20 @@ function applyLoadedSettings(s) {
   }
 }
 
-// ── Auto-save settings (called whenever a setting changes) ───────────────────
-async function autoSaveSettings() {
+// ── Auto-save settings (debounced — waits 800ms after last change) ──────────
+let _autoSaveTimer = null;
+function autoSaveSettings() {
   if (!acctUser) return;
-  const res = await acctAPI('saveSettings', {
-    username: acctUser.username,
-    passwordHash: acctUser.token,
-    settings: gatherSettings(),
-  });
-  const el = document.getElementById('acct-save-status');
-  if (el) el.textContent = res.ok ? 'Saved ✓' : 'Save failed';
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(async () => {
+    const res = await acctAPI('saveSettings', {
+      username: acctUser.username,
+      passwordHash: acctUser.token,
+      settings: gatherSettings(),
+    });
+    const el = document.getElementById('acct-save-status');
+    if (el) { el.textContent = res.ok ? 'Saved ✓' : 'Save failed'; }
+  }, 800);
 }
 
 // ── Patch toggleSetting and setWinScore and vol-slider to auto-save ───────────
