@@ -818,7 +818,7 @@
 // ── Audio ─────────────────────────────────────────────────────────────────────
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let volume = 0.4;
-document.getElementById('vol-slider').addEventListener('input', e => { volume = +e.target.value; });
+UI.volSlider.addEventListener('input', e => { volume = +e.target.value; });
 
 function beep(freq, dur, type = 'square') {
   if (!volume) return;
@@ -844,6 +844,7 @@ const W = 560, H = 660;
 const PADDLE_W = 96, PADDLE_H = 12, PADDLE_MARGIN = 22;
 const BALL_R = 5;
 let   WINNING_SCORE   = 4;   // adjustable in settings (3–11)
+const EFFECT_KEYS = ['wide','curve','power','split','shrunk','reversed'];
 const BASE_SPEED      = 5.5;
 const SPEED_INC       = 0.2;
 const MAX_SPEED       = 13;
@@ -1096,7 +1097,7 @@ function startMPGame() {
   _mpTick = 0;
   labMode = false; mode = 'mp'; difficulty = null;
   mpGuestPaused = false; chatOpen = false; chatVisible = false; chatUnread = 0;
-  document.getElementById('chat-input-bar').style.display = 'none';
+  UI.chatInputBar.style.display = 'none';
   const mobileChat = document.getElementById('mobile-chat');
   if (mobileChat) mobileChat.textContent = '💬 CHAT';
   showOnly('game-screen');
@@ -1112,7 +1113,7 @@ function startMPGame() {
 function startMPGameAsGuest() {
   labMode = false; mode = 'mp'; difficulty = null;
   mpGuestPaused = false; chatOpen = false; chatVisible = false; chatUnread = 0;
-  document.getElementById('chat-input-bar').style.display = 'none';
+  UI.chatInputBar.style.display = 'none';
   const mobileChatG = document.getElementById('mobile-chat');
   if (mobileChatG) mobileChatG.textContent = '💬 CHAT';
   showOnly('game-screen');
@@ -1122,7 +1123,6 @@ function startMPGameAsGuest() {
   lastTime = performance.now();
   animId = requestAnimationFrame(loop);
 }
-
 
 // ── Snap reset — sent immediately after a score ───────────────────────────────
 function sendSnapReset() {
@@ -1153,11 +1153,11 @@ function applyCore(d) {
   if (!ball) { ball = { x: d.bx, y: d.by }; velX = d.vx; velY = d.vy; }
   else {
     const dx = d.bx - ball.x, dy = d.by - ball.y;
-    const dist = Math.sqrt(dx*dx + dy*dy);
+    const dist2 = dx*dx + dy*dy;
     const vFlip = (Math.sign(d.vx) !== Math.sign(velX) && Math.abs(d.vx) > 1) ||
                   (Math.sign(d.vy) !== Math.sign(velY) && Math.abs(d.vy) > 1);
-    if (dist > 40 || vFlip) { ball.x = d.bx; ball.y = d.by; velX = d.vx; velY = d.vy; }
-    else if (dist > 3)      { ball.x += dx*0.2; ball.y += dy*0.2; }
+    if (dist2 > 1600 || vFlip) { ball.x = d.bx; ball.y = d.by; velX = d.vx; velY = d.vy; }
+    else if (dist2 > 9)        { ball.x += dx*0.2; ball.y += dy*0.2; }
   }
   if (!paddleT) paddleT = { x: d.pTx, y: PADDLE_MARGIN };
   else paddleT.x += (d.pTx - paddleT.x) * 0.4;
@@ -1210,7 +1210,7 @@ function applyFull(d) {
 // ── Guest local prediction ────────────────────────────────────────────────────
 function guestPredict(dt) {
   if (!ball || !paddleB || !paddleT) return;
-  const ps=padSpeed(), pwB=getPaddleW(false);
+  const ps=padSpeed(), pwB=getPaddleW(false); // padSpeed cached — only recalc when ballSpeed changes
   const botRev = activeEffects.bottom.reversed > 0 ? -1 : 1;
   if (keys['ArrowLeft']  || keys['a'] || keys['A']) paddleB.x -= botRev*ps*dt;
   if (keys['ArrowRight'] || keys['d'] || keys['D']) paddleB.x += botRev*ps*dt;
@@ -1359,7 +1359,7 @@ function handleDisconnect() {
     mpHostReady = false; mpGuestReady = false;
     mpGuestPaused = false;
     chatMessages = []; chatOpen = false; chatVisible = false; chatUnread = 0;
-    document.getElementById('chat-input-bar').style.display = 'none';
+    UI.chatInputBar.style.display = 'none';
     setTimeout(() => {
       overlay.style.display = 'none';
       // Restore default message text for future disconnects
@@ -1375,7 +1375,7 @@ function handleDisconnect() {
       if (mpPeer) { mpPeer.destroy(); mpPeer = null; }
       mpConn = null; mpMode = null;
       chatMessages = []; chatOpen = false; chatVisible = false; chatUnread = 0;
-      document.getElementById('chat-input-bar').style.display = 'none';
+      UI.chatInputBar.style.display = 'none';
       showOnly('mode-screen');
     }, 2500);
   }
@@ -1383,7 +1383,7 @@ function handleDisconnect() {
 
 // ── MP Chat ───────────────────────────────────────────────────────────────────
 function positionInputBar() {
-  const bar = document.getElementById('chat-input-bar');
+  const bar = UI.chatInputBar;
 
   // On the ready screen, anchor below the "Press T to chat" hint text
   const hint = document.getElementById('mp-ready-chat-hint');
@@ -1410,7 +1410,7 @@ function toggleChat() {
   // Open/close is based on chatOpen only — chatVisible may already be true from
   // an incoming message and must not block opening or accidentally trigger a close.
   chatOpen = !chatOpen;
-  const bar = document.getElementById('chat-input-bar');
+  const bar = UI.chatInputBar;
   if (chatOpen) {
     chatVisible = true;   // keep overlay on whenever input is open
     bar.style.display = 'flex';
@@ -1631,35 +1631,23 @@ function getPaddleW(isTop) {
 function showOnly(id) {
   currentScreen = id;
   SCREENS.forEach(s => screenEls[s].style.display = s===id ? 'flex' : 'none');
-  // Lab sidebar — hidden in touch mode
-  document.getElementById('lab-sidebar').classList.toggle('visible', id==='game-screen' && labMode && !touchMode);
-  document.getElementById('pause-hint').style.display = (labMode || touchMode) ? 'none' : '';
-  // Touch overlay + quit button
-  const inGame = id === 'game-screen';
+  const inGame    = id === 'game-screen';
   const showTouch = inGame && touchMode;
-  document.getElementById('touch-controls').style.display = showTouch ? 'flex' : 'none';
-  // P2 touch controls only in 2P touch mode
-  const tcP2 = document.getElementById('touch-controls-p2');
-  if (tcP2) tcP2.style.display = (showTouch && mode === '2p') ? 'flex' : 'none';
-  // Mobile button row — sits above canvas in layout flow
-  const inMPArea = (id === 'game-screen' || id === 'mp-ready-screen') && mpMode;
-  document.getElementById('mobile-btn-row').style.display  = inGame ? 'flex' : 'none';
-  document.getElementById('mobile-quit').style.display     = showTouch ? 'block' : 'none';
-  document.getElementById('mobile-chat').style.display     = (showTouch && inMPArea) ? 'block' : 'none';
-  document.getElementById('mobile-pause').style.display    = (showTouch && mpMode === 'host' && inGame) ? 'block' : 'none';
-  if (!inMPArea) { chatOpen = false; chatVisible = false; document.getElementById('chat-input-bar').style.display = 'none'; }
+  const inMPArea  = (id === 'game-screen' || id === 'mp-ready-screen') && mpMode;
+  UI.labSidebar.classList.toggle('visible', inGame && labMode && !touchMode);
+  UI.pauseHint.style.display      = (labMode || touchMode) ? 'none' : '';
+  UI.touchControls.style.display  = showTouch ? 'flex' : 'none';
+  UI.touchControlsP2.style.display= (showTouch && mode === '2p') ? 'flex' : 'none';
+  UI.mobileBtnRow.style.display   = inGame ? 'flex' : 'none';
+  UI.mobileQuit.style.display     = showTouch ? 'block' : 'none';
+  UI.mobileChat.style.display     = (showTouch && inMPArea) ? 'block' : 'none';
+  UI.mobilePause.style.display    = (showTouch && mpMode === 'host' && inGame) ? 'block' : 'none';
+  UI.fullscreenBtn.style.display  = inGame ? 'block' : 'none';
+  UI.mobilePauseAi.style.display  = (inGame && touchMode && mode === 'ai') ? 'block' : 'none';
+  UI.mobileLabPanel.classList.toggle('lab-visible', inGame && labMode);
+  UI.desktopLabBot.style.display  = (inGame && labMode && !touchMode) ? 'flex' : 'none';
+  if (!inMPArea) { chatOpen = false; chatVisible = false; UI.chatInputBar.style.display = 'none'; }
   if (inGame) { scaleGame(); setTimeout(scaleGame, 50); }
-  // Show fullscreen button only during gameplay on desktop
-  const fsBtn = document.getElementById('fullscreen-btn');
-  if (fsBtn) fsBtn.style.display = (id === 'game-screen') ? 'block' : 'none';
-  const pauseAiBtn = document.getElementById('mobile-pause-ai');
-  if (pauseAiBtn) pauseAiBtn.style.display = (id === 'game-screen' && touchMode && mode === 'ai') ? 'block' : 'none';
-  // Show mobile lab panel only in touch mode + lab mode
-  const mobileLabPanel = document.getElementById('lab-mobile-panel');
-  if (mobileLabPanel) mobileLabPanel.classList.toggle('lab-visible', id === 'game-screen' && labMode);
-  // Show desktop lab bottom bar when in lab mode (non-touch)
-  const desktopLabBottom = document.getElementById('lab-desktop-bottom');
-  if (desktopLabBottom) desktopLabBottom.style.display = (id === 'game-screen' && labMode && !touchMode) ? 'flex' : 'none';
 }
 const showMode       = () => { labMode = false; document.body.classList.remove('lab-active'); showOnly('mode-screen'); };
 const showDifficulty = () => showOnly('difficulty-screen');
@@ -1696,26 +1684,28 @@ function switchLabTab(tab) {
 }
 
 // Sync mobile pill states with desktop (called after labToggle updates desktop btns)
+// Pre-cache lab pill button pairs — built once, reused on every toggle
+const LAB_PILL_PAIRS = [
+  ['lbtn-top-wide','mb-top-wide'],['lbtn-top-curve','mb-top-curve'],
+  ['lbtn-top-power','mb-top-power'],['lbtn-top-split','mb-top-split'],
+  ['lbtn-top-shrink','mb-top-shrink'],['lbtn-top-reverse','mb-top-reverse'],
+  ['lbtn-bot-wide','mb-bot-wide'],['lbtn-bot-curve','mb-bot-curve'],
+  ['lbtn-bot-power','mb-bot-power'],['lbtn-bot-split','mb-bot-split'],
+  ['lbtn-bot-shrink','mb-bot-shrink'],['lbtn-bot-reverse','mb-bot-reverse'],
+].map(([d, m]) => ({
+  dBtn: document.getElementById(d),
+  mBtn: document.getElementById(m),
+})).filter(p => p.dBtn && p.mBtn);
+
 function syncMobileLabPills() {
-  const map = [
-    ['lbtn-top-wide','mb-top-wide'],['lbtn-top-curve','mb-top-curve'],
-    ['lbtn-top-power','mb-top-power'],['lbtn-top-split','mb-top-split'],
-    ['lbtn-top-shrink','mb-top-shrink'],['lbtn-top-reverse','mb-top-reverse'],
-    ['lbtn-bot-wide','mb-bot-wide'],['lbtn-bot-curve','mb-bot-curve'],
-    ['lbtn-bot-power','mb-bot-power'],['lbtn-bot-split','mb-bot-split'],
-    ['lbtn-bot-shrink','mb-bot-shrink'],['lbtn-bot-reverse','mb-bot-reverse'],
-  ];
-  map.forEach(([desk, mob]) => {
-    const dBtn = document.getElementById(desk);
-    const mBtn = document.getElementById(mob);
-    if (!dBtn || !mBtn) return;
-    const pill = mBtn.querySelector('.ppill');
+  for (const { dBtn, mBtn } of LAB_PILL_PAIRS) {
+    const pill  = mBtn.querySelector('.ppill');
     const dPill = dBtn.querySelector('.ppill');
     if (pill && dPill) {
       pill.textContent = dPill.textContent;
       mBtn.classList.toggle('on', dBtn.classList.contains('on'));
     }
-  });
+  }
 }
 
 function startLab() {
@@ -1742,7 +1732,7 @@ function backToMenu() {
   if (mpPeer) { mpPeer.destroy(); mpPeer = null; }
   mpConn = null; mpMode = null;
   chatMessages = []; chatOpen = false; chatVisible = false; chatUnread = 0;
-  document.getElementById('chat-input-bar').style.display = 'none';
+  UI.chatInputBar.style.display = 'none';
   showOnly('mode-screen');
   if (animId) { cancelAnimationFrame(animId); animId = null; }
 }
@@ -1803,7 +1793,7 @@ document.addEventListener('keydown', e => {
       e.preventDefault();
       document.activeElement.blur();
       chatOpen = false; chatVisible = false;
-      document.getElementById('chat-input-bar').style.display = 'none';
+      UI.chatInputBar.style.display = 'none';
     }
     return; // block all game keys while typing
   }
@@ -1832,6 +1822,32 @@ const SCREENS = ['mode-screen','difficulty-screen','2p-screen','game-screen',
 const screenEls = {};
 SCREENS.forEach(id => screenEls[id] = document.getElementById(id));
 let currentScreen = 'mode-screen';
+
+// Cache frequently accessed UI elements used in showOnly and elsewhere
+const UI = {
+  labSidebar:      document.getElementById('lab-sidebar'),
+  pauseHint:       document.getElementById('pause-hint'),
+  touchControls:   document.getElementById('touch-controls'),
+  touchControlsP2: document.getElementById('touch-controls-p2'),
+  mobileBtnRow:    document.getElementById('mobile-btn-row'),
+  mobileQuit:      document.getElementById('mobile-quit'),
+  mobileChat:      document.getElementById('mobile-chat'),
+  mobilePause:     document.getElementById('mobile-pause'),
+  mobilePauseAi:   document.getElementById('mobile-pause-ai'),
+  fullscreenBtn:   document.getElementById('fullscreen-btn'),
+  mobileLabPanel:  document.getElementById('lab-mobile-panel'),
+  desktopLabBot:   document.getElementById('lab-desktop-bottom'),
+  chatInputBar:    UI.chatInputBar,
+  volSlider:       UI.volSlider,
+  acctErr:         UI.acctErr,
+  acctUser:        UI.acctUser,
+  acctPass:        UI.acctPass,
+  acctRemember:    UI.acctRemember,
+  acctSaveStatus:  UI.acctSaveStatus,
+  acctDisplayName: UI.acctDisplayName,
+  acctLoggedout:   UI.acctLoggedout,
+  acctLoggedin:    UI.acctLoggedin,
+};
 
 // ── Input mode: touch vs keyboard — switches dynamically ──────────────────────
 // true = touch mode (shows touch controls, scales canvas)
@@ -1905,8 +1921,6 @@ window.addEventListener('resize', () => { scaleGame(); if (chatOpen) positionInp
 document.body.classList.toggle('touch-mode', touchMode);
 scaleGame();
 setTimeout(scaleGame, 100); // re-run after layout settles
-
-
 
 // Touch controls
 const tcLeft  = document.getElementById('touch-left');
@@ -2098,7 +2112,6 @@ function update(dt) {
   });
 
   // Tick all effect timers (skip in lab mode — applyLabToggles holds them at 9999)
-  const EFFECT_KEYS = ['wide','curve','power','split','shrunk','reversed'];
   if (!labMode) {
     for (const side of ['top','bottom']) {
       const ef = activeEffects[side];
@@ -2353,25 +2366,14 @@ function hitPaddle(paddle, side, velDir) {
 
 // ── AI ────────────────────────────────────────────────────────────────────────
 // Predict where the ball will cross the AI paddle's Y line, bouncing off walls
-function predictBallX() {
-  // Simulate ball path to paddleB Y, accounting for wall bounces
-  let bx = ball.x, by = ball.y, bvx = velX, bvy = velY;
-  const targetY = paddleB.y;
-  if (bvy <= 0) return ball.x;
-  for (let i = 0; i < 600; i++) {
-    bx += bvx;
-    by += bvy;
-    if (bx - BALL_R < 0)    { bx = BALL_R;     bvx =  Math.abs(bvx); }
-    if (bx + BALL_R > W)    { bx = W - BALL_R; bvx = -Math.abs(bvx); }
-    if (by >= targetY) break;
-  }
-  return bx;
-}
 
 function aiMove(dt, ps) {
   const cfg    = DIFF[difficulty];
   const pw     = getPaddleW(false);
   const center = paddleB.x + pw / 2;
+  const isEasy = isEasy;
+  const isMed  = isMed;
+  const isHard = isHard;
 
   // ── REVERSE power-up confusion ────────────────────────────────────────────
   // aiReverseDelay > 0  = still in hesitation window (going wrong way)
@@ -2381,8 +2383,8 @@ function aiMove(dt, ps) {
   if (reversed) {
     if (aiReverseDelay === 0 && !aiReverseConfused) {
       // Just got reversed for the first time — start hesitation
-      const hesitation = difficulty === 'easy'   ? 55
-                       : difficulty === 'medium'  ? 28
+      const hesitation = isEasy   ? 55
+                       : isMed  ? 28
                        : 10;
       aiReverseDelay    = hesitation;
       aiReverseConfused = true;
@@ -2392,7 +2394,7 @@ function aiMove(dt, ps) {
       if (aiReverseDelay <= 0) {
         // Hesitation done — hard fully adapts, easy/medium stay confused
         aiReverseDelay = -1; // sentinel: hesitation served
-        if (difficulty === 'hard') aiReverseConfused = false;
+        if (isHard) aiReverseConfused = false;
       }
     }
     // aiReverseDelay === -1: hesitation already served, state locked in
@@ -2400,8 +2402,8 @@ function aiMove(dt, ps) {
     // Reverse just wore off or has been off
     if (aiReverseConfused || aiReverseDelay !== 0) {
       // Was reversed — start recovery hesitation (AI still thinks it's reversed briefly)
-      const recovery = difficulty === 'easy'   ? 55
-                     : difficulty === 'medium'  ? 28
+      const recovery = isEasy   ? 55
+                     : isMed  ? 28
                      : 10;
       aiReverseRecovery = recovery;
       aiReverseDelay    = 0;
@@ -2419,12 +2421,12 @@ function aiMove(dt, ps) {
   if (ghostBall) {
     if (--aiGhostCheckTimer <= 0) {
       // Re-evaluate: should we chase ghost or real ball?
-      const foolChance = difficulty === 'easy'   ? 0.65
-                       : difficulty === 'medium'  ? 0.22
+      const foolChance = isEasy   ? 0.65
+                       : isMed  ? 0.22
                        : 0.04; // hard: very rarely fooled
       aiGhostLocked    = Math.random() < foolChance;
-      aiGhostCheckTimer = difficulty === 'easy'   ? 25
-                        : difficulty === 'medium'  ? 15
+      aiGhostCheckTimer = isEasy   ? 25
+                        : isMed  ? 15
                         : 12;
     }
     if (aiGhostLocked) targetX = ghostBall.x; // chasing the fake
@@ -2439,8 +2441,8 @@ function aiMove(dt, ps) {
   // They track current ball X which already includes curve drift, but we add
   // an extra offset in the wrong direction to simulate misreading the curve
   if (Math.abs(curveSpin) > 0.01 && velY > 0) {
-    const curveOffset = difficulty === 'easy'   ? -curveSpin * 18
-                      : difficulty === 'medium'  ? -curveSpin * 8
+    const curveOffset = isEasy   ? -curveSpin * 18
+                      : isMed  ? -curveSpin * 8
                       : 0; // hard reads curve perfectly
     targetX += curveOffset;
   }
@@ -2455,7 +2457,7 @@ function aiMove(dt, ps) {
   // Speed reduced slightly when confused by power-ups (hesitation effect)
   const confused  = aiReverseConfused || aiReverseRecovery > 0 || aiGhostLocked;
   const speedMult = confused
-    ? (difficulty === 'easy' ? cfg.speedMult * 0.7 : cfg.speedMult * 0.88)
+    ? (isEasy ? cfg.speedMult * 0.7 : cfg.speedMult * 0.88)
     : cfg.speedMult;
   const as = ps * speedMult;
 
@@ -2483,7 +2485,7 @@ function draw() {
   cx.setLineDash([]);
 
   // Scores (hidden in lab mode — show LAB label instead)
-  cx.textAlign='center'; cx.textBaseline='middle';
+  cx.textAlign='center'; cx.textBaseline='middle'; // set once — only changed where needed
   if (labMode) {
     cx.font='0.55rem Courier New'; cx.fillStyle='#1e1e1e';
     cx.fillText('POWER-UP LAB', W/2, H/2 - 10);
@@ -2511,7 +2513,7 @@ function draw() {
     cx.textAlign='right'; cx.font='0.5rem Courier New';
     cx.globalAlpha=0.22; cx.fillStyle=DIFF_COLOR[difficulty];
     cx.fillText(difficulty.toUpperCase(), W-10, H-10);
-    cx.globalAlpha=1; cx.textAlign='center';
+    cx.globalAlpha=1;
   }
 
   for (const obs of obstacles) drawObstacle(obs);
@@ -2911,10 +2913,15 @@ async function acctAPI(action, payload = {}) {
 }
 
 // ── Overlay open/close ────────────────────────────────────────────────────────
+let _overlayRect = null;
+window.addEventListener('resize', () => { _overlayRect = null; }); // invalidate on resize
+
 function positionOverCanvas(el) {
-  const s = screenEls[currentScreen] || document.body;
-  let ref = s.getBoundingClientRect();
-  if (!ref) ref = document.body.getBoundingClientRect();
+  if (!_overlayRect) {
+    const s = screenEls[currentScreen] || document.body;
+    _overlayRect = s.getBoundingClientRect();
+  }
+  const ref = _overlayRect;
   el.style.left   = ref.left + 'px';
   el.style.top    = ref.top  + window.scrollY + 'px';
   el.style.width  = ref.width  + 'px';
@@ -2922,10 +2929,10 @@ function positionOverCanvas(el) {
 }
 
 function openAcctOverlay() {
-  document.getElementById('acct-err').textContent = '';
-  document.getElementById('acct-user').value = '';
-  document.getElementById('acct-pass').value = '';
-  document.getElementById('acct-save-status').textContent = '';
+  UI.acctErr.textContent = '';
+  UI.acctUser.value = '';
+  UI.acctPass.value = '';
+  UI.acctSaveStatus.textContent = '';
   refreshAcctView();
   const el = document.getElementById('acct-overlay');
   positionOverCanvas(el);
@@ -2950,11 +2957,11 @@ function closeStatsOverlay() {
 }
 
 function refreshAcctView() {
-  const out = document.getElementById('acct-loggedout');
-  const inn = document.getElementById('acct-loggedin');
+  const out = UI.acctLoggedout;
+  const inn = UI.acctLoggedin;
   if (acctUser) {
     out.style.display = 'none'; inn.style.display = '';
-    document.getElementById('acct-display-name').textContent = acctUser.username;
+    UI.acctDisplayName.textContent = acctUser.username;
   } else {
     out.style.display = ''; inn.style.display = 'none';
   }
@@ -2967,10 +2974,10 @@ function updateLoginModeBtn() {
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 async function acctLogin() {
-  const username = document.getElementById('acct-user').value.trim();
-  const password = document.getElementById('acct-pass').value;
-  if (!username || !password) { document.getElementById('acct-err').textContent = 'Enter username and password.'; return; }
-  document.getElementById('acct-err').textContent = 'Logging in…';
+  const username = UI.acctUser.value.trim();
+  const password = UI.acctPass.value;
+  if (!username || !password) { UI.acctErr.textContent = 'Enter username and password.'; return; }
+  UI.acctErr.textContent = 'Logging in…';
   const hash = await sha256(password);
   const res = await acctAPI('login', { username, passwordHash: hash });
   if (res.ok) {
@@ -2979,27 +2986,27 @@ async function acctLogin() {
     refreshAcctView();
     updateLoginModeBtn();
     updateRdyIdentity();
-    document.getElementById('acct-err').textContent = '';
-    document.getElementById('acct-save-status').textContent = 'Logged in ✓';
+    UI.acctErr.textContent = '';
+    UI.acctSaveStatus.textContent = 'Logged in ✓';
     // Save to cookie if remember me is checked (30 day expiry)
-    const remember = document.getElementById('acct-remember');
+    const remember = UI.acctRemember;
     if (remember && remember.checked) {
       setCookie('cpong_user', username);
       setCookie('cpong_token', hash);
     }
   } else {
-    document.getElementById('acct-err').textContent = res.error || 'Login failed.';
+    UI.acctErr.textContent = res.error || 'Login failed.';
   }
 }
 
 // ── Create account ────────────────────────────────────────────────────────────
 async function acctCreate() {
-  const username = document.getElementById('acct-user').value.trim();
-  const password = document.getElementById('acct-pass').value;
-  if (!username || !password) { document.getElementById('acct-err').textContent = 'Enter username and password.'; return; }
-  if (username.length < 3)   { document.getElementById('acct-err').textContent = 'Username must be 3+ characters.'; return; }
+  const username = UI.acctUser.value.trim();
+  const password = UI.acctPass.value;
+  if (!username || !password) { UI.acctErr.textContent = 'Enter username and password.'; return; }
+  if (username.length < 3)   { UI.acctErr.textContent = 'Username must be 3+ characters.'; return; }
 
-  document.getElementById('acct-err').textContent = 'Creating account…';
+  UI.acctErr.textContent = 'Creating account…';
   const hash = await sha256(password);
   const res = await acctAPI('createAccount', { username, passwordHash: hash, settings: gatherSettings() });
   if (res.ok) {
@@ -3007,10 +3014,10 @@ async function acctCreate() {
     refreshAcctView();
     updateLoginModeBtn();
     updateRdyIdentity();
-    document.getElementById('acct-err').textContent = '';
-    document.getElementById('acct-save-status').textContent = 'Account created ✓';
+    UI.acctErr.textContent = '';
+    UI.acctSaveStatus.textContent = 'Account created ✓';
   } else {
-    document.getElementById('acct-err').textContent = res.error || 'Could not create account.';
+    UI.acctErr.textContent = res.error || 'Could not create account.';
   }
 }
 
@@ -3039,7 +3046,7 @@ function applyLoadedSettings(s) {
   // Use _orig functions to bypass auto-save triggers during load
   if (s.volume !== undefined) {
     volume = parseFloat(s.volume);
-    const slider = document.getElementById('vol-slider');
+    const slider = UI.volSlider;
     if (slider) slider.value = volume;
   }
   if (s.winScore && _origSetWinScore) _origSetWinScore(s.winScore);
@@ -3074,7 +3081,7 @@ function autoSaveSettings() {
       passwordHash: acctUser.token,
       settings: gatherSettings(),
     });
-    const el = document.getElementById('acct-save-status');
+    const el = UI.acctSaveStatus;
     if (el) { el.textContent = res.ok ? 'Saved ✓' : 'Save failed'; }
   }, 800);
 }
@@ -3090,7 +3097,7 @@ setWinScore = function(n) {
   _origSetWinScore(n);
   autoSaveSettings();
 };
-document.getElementById('vol-slider').addEventListener('change', () => autoSaveSettings());
+UI.volSlider.addEventListener('change', () => autoSaveSettings());
 
 // ── MP Ready screen identity ──────────────────────────────────────────────────
 function updateRdyIdentity() {
@@ -3200,8 +3207,6 @@ async function loadAndShowStats() {
 // ── MP identity handshake (guest sends username+token to host after connect) ──
 let mpGuestUsername = null;
 let mpGuestToken    = null;
-
-
 
 function endGame() {
   gameState = 'over';
