@@ -309,6 +309,11 @@
     #quit-confirm .qbtn-leave:hover  { background: #f44336; color: #0a0a0a; }
     #quit-confirm .qbtn-stay:hover   { background: #555;    color: #0a0a0a; }
 
+    /* ── Feedback stars ── */
+    .star { color: #333; transition: color 0.1s; user-select: none; }
+    .star.lit { color: #fff; }
+    .star:hover { color: #aaa; }
+
     /* ── Account overlay (login / stats) ── */
     .acct-overlay {
       display: none; position: fixed;
@@ -438,6 +443,7 @@
   </div>
   <button class="btn" onclick="showMP()" style="border-color:#40c4ff;color:#40c4ff" onmouseover="this.style.background='#40c4ff';this.style.color='#0a0a0a'" onmouseout="this.style.background='transparent';this.style.color='#40c4ff'">MULTIPLAYER</button>
   <button class="btn btn-back" onclick="showSettings()" style="margin-top:0.1rem;letter-spacing:0.2rem">⚙ &nbsp;SETTINGS</button>
+  <button class="btn" onclick="openFeedbackOverlay()" style="border-color:#444;color:#555;margin-top:0.1rem;letter-spacing:0.2rem">✉ &nbsp;FEEDBACK</button>
   <div style="height:0.2rem"></div>
   <div class="controls-hint">
     <strong style="color:#666">VS COMPUTER</strong><br>A / D &nbsp;·&nbsp; ← / →<br><br>
@@ -666,6 +672,27 @@
   <p id="mp-join-status"></p>
   <div class="mp-info">You will be <strong style="color:#fff">Player 2</strong> (bottom paddle)<br>Controls: A / D &nbsp;or&nbsp; ← / →</div>
   <button class="btn btn-back" onclick="showMP()">← BACK</button>
+</div>
+
+<!-- ── Feedback overlay ── -->
+<div id="feedback-overlay" class="acct-overlay" onclick="if(event.target===this)closeFeedbackOverlay()">
+  <div class="acct-box" style="max-width:380px">
+    <p class="acct-title">LEAVE FEEDBACK</p>
+    <p class="acct-err" id="feedback-err"></p>
+    <input class="acct-input" id="feedback-name" type="text" placeholder="YOUR NAME (optional)" maxlength="32" autocomplete="off" autocapitalize="none">
+    <div id="feedback-stars" style="display:flex;gap:8px;justify-content:center;font-size:1.6rem;cursor:pointer;margin:4px 0">
+      <span class="star" data-v="1" onclick="setFeedbackStar(1)">☆</span>
+      <span class="star" data-v="2" onclick="setFeedbackStar(2)">☆</span>
+      <span class="star" data-v="3" onclick="setFeedbackStar(3)">☆</span>
+      <span class="star" data-v="4" onclick="setFeedbackStar(4)">☆</span>
+      <span class="star" data-v="5" onclick="setFeedbackStar(5)">☆</span>
+    </div>
+    <p id="feedback-star-label" style="font-size:0.55rem;color:#444;letter-spacing:0.1rem;text-align:center;min-height:1em"></p>
+    <textarea class="acct-input" id="feedback-comment" placeholder="COMMENT (optional)" maxlength="500" rows="4" style="resize:none;font-family:'Courier New',monospace;font-size:0.72rem"></textarea>
+    <button class="acct-btn" onclick="submitFeedback()">SUBMIT</button>
+    <a href="/feedback.html" target="_blank" style="font-size:0.58rem;color:#444;letter-spacing:0.1rem;text-align:center;text-decoration:none;transition:color 0.12s" onmouseover="this.style.color='#aaa'" onmouseout="this.style.color='#444'">VIEW ALL FEEDBACK →</a>
+    <button class="acct-btn acct-btn-secondary" onclick="closeFeedbackOverlay()">CLOSE</button>
+  </div>
 </div>
 
 <!-- ── Login / Account overlay ── -->
@@ -2928,6 +2955,67 @@ async function loadAndShowStats() {
 // ── MP identity handshake (guest sends username+token to host after connect) ──
 let mpGuestUsername = null;
 let mpGuestToken    = null;
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FEEDBACK SYSTEM
+// ══════════════════════════════════════════════════════════════════════════════
+const FEEDBACK_URL = 'https://script.google.com/macros/s/AKfycbyHsN4n60qgurpZc24uOhQyvYA1Pe8kyJzpomt_3hYJ3-S16kJ1YDB3Hd_vA0bBNAoa1g/exec';
+
+let feedbackStar = 0;
+
+function openFeedbackOverlay() {
+  // Auto-fill name if logged in
+  const nameEl = document.getElementById('feedback-name');
+  if (nameEl && acctUser) nameEl.value = acctUser.username;
+  feedbackStar = 0;
+  setFeedbackStar(0);
+  document.getElementById('feedback-err').textContent = '';
+  document.getElementById('feedback-comment').value = '';
+  const el = document.getElementById('feedback-overlay');
+  positionOverCanvas(el);
+  el.classList.add('open');
+}
+
+function closeFeedbackOverlay() {
+  document.getElementById('feedback-overlay').classList.remove('open');
+}
+
+function setFeedbackStar(val) {
+  feedbackStar = val;
+  const stars = document.querySelectorAll('#feedback-stars .star');
+  const labels = ['', 'POOR', 'FAIR', 'GOOD', 'GREAT', 'EXCELLENT'];
+  stars.forEach((s, i) => s.classList.toggle('lit', i < val));
+  document.getElementById('feedback-star-label').textContent = val ? labels[val] : '';
+}
+
+async function submitFeedback() {
+  const name    = document.getElementById('feedback-name').value.trim() || 'Anonymous';
+  const comment = document.getElementById('feedback-comment').value.trim();
+  const errEl   = document.getElementById('feedback-err');
+
+  if (!feedbackStar) { errEl.textContent = 'Please select a star rating.'; return; }
+
+  errEl.textContent = 'Submitting…';
+  try {
+    const res = await fetch(FEEDBACK_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'submitFeedback', name, rating: feedbackStar, comment }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      errEl.style.color = '#4caf50';
+      errEl.textContent = 'Thanks for your feedback!';
+      setTimeout(closeFeedbackOverlay, 1800);
+    } else {
+      errEl.style.color = '#f44336';
+      errEl.textContent = data.error || 'Submission failed.';
+    }
+  } catch(e) {
+    errEl.style.color = '#f44336';
+    errEl.textContent = 'Network error. Try again.';
+  }
+}
 
 function endGame() {
   gameState = 'over';
