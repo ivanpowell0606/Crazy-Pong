@@ -1023,7 +1023,6 @@ function hostGame() {
     conn.on('data', d => {
       if      (d.t === 'input')    {
         guestInputs.l = d.l; guestInputs.r = d.r;
-        // Smooth host's view of guest paddle using guest's reported position
         if (d.px !== null && paddleB) paddleB.x += (d.px - paddleB.x) * 0.4;
       }
       else if (d.t === 'ready')    { mpGuestReady = true; updateReadyStatus(); if (mpHostReady && mpGuestReady) startMPRematch(); }
@@ -1064,8 +1063,9 @@ function joinGame() {
         setReadyPtsBtnsEnabled(false);
       }
       else if (d.t === 'start')        startMPGameAsGuest();
-      else if (d.t === 'state')        applyNetState(d);
-      else if (d.t === 'paddle')       applyHostPaddle(d);
+      else if (d.t === 'core')         applyCore(d);
+      else if (d.t === 'full')         applyFull(d);
+      else if (d.t === 'state')        applyNetState(d); // legacy fallback
       else if (d.t === 'gameover')     mpGameOver(d);
       else if (d.t === 'pause')        { mpGuestPaused = true; }
       else if (d.t === 'resume')       { mpGuestPaused = false; }
@@ -1092,7 +1092,7 @@ function joinGame() {
 
 // ── Start MP game (host) ───────────────────────────────────────────────────────
 function startMPGame() {
-  _mpSendTick = 0;
+  _mpTick = 0;
   labMode = false; mode = 'mp'; difficulty = null;
   mpGuestPaused = false; chatOpen = false; chatVisible = false; chatUnread = 0;
   document.getElementById('chat-input-bar').style.display = 'none';
@@ -1122,135 +1122,138 @@ function startMPGameAsGuest() {
   animId = requestAnimationFrame(loop);
 }
 
-// ── Send state (host → guest, compact packet every 3 frames) ────────────────
-let _mpSendTick = 0;
+// ── Send state (host → guest) ────────────────────────────────────────────────
+// Every frame: compact core packet (ball + paddles)
+// Every 6 frames: full sync packet (obstacles, powerups, effects)
+let _mpTick = 0;
+let _mpLastEf  = null;
+let _mpLastObCount = 0;
+let _mpLastPuCount = 0;
+
 function sendState() {
   if (!mpConn || !mpConn.open) return;
-  _mpSendTick++;
-  // Send compact truth packet every 3 frames — reduces bandwidth and jank
-  if (_mpSendTick % 3 !== 0) {
-    // Every frame: just send paddle position + frame timestamp for smooth opponent paddle
-    mpConn.send({ t: 'paddle', x: paddleT.x, ts: performance.now() });
-    return;
-  }
-  // Full reconciliation packet every 3 frames
+  _mpTick++;
+
+  // Always send core ball + paddle state every frame
   mpConn.send({
-    t: 'state',
-    b:  { x: ball.x, y: ball.y },
-    pT: { x: paddleT.x }, pB: { x: paddleB.x },
-    sT: scoreT, sB: scoreB,
-    vx: velX, vy: velY,
-    ef: activeEffects, cd: countdownTimer,
-    gb: ghostBall ? { x: ghostBall.x, y: ghostBall.y, vx: ghostBall.vx, vy: ghostBall.vy, age: ghostBall.age, curveSpin: ghostBall.curveSpin, speed: ghostBall.speed } : null,
-    pu: powerups.map(p => ({ cx:p.cx, cy:p.cy, type:p.type, age:p.age })),
-    ob: obstacles.map(o => ({ cx:o.cx, cy:o.cy, vx:o.vx, vy:o.vy, verts:o.verts, baseR:o.baseR, age:o.age })),
-    ts: performance.now(),
+    t: 'core',
+    bx: ball.x, by: ball.y, vx: velX, vy: velY,
+    pTx: paddleT.x, pBx: paddleB.x,
+    cd: countdownTimer,
+    // Ghost ball — send every frame since it moves fast
+    gb: ghostBall ? {
+      x: ghostBall.x, y: ghostBall.y,
+      vx: ghostBall.vx, vy: ghostBall.vy,
+      age: ghostBall.age, curveSpin: ghostBall.curveSpin, speed: ghostBall.speed
+    } : null,
   });
-}
 
-// ── Client-side prediction state ─────────────────────────────────────────────
-let mpLastHostTs  = 0;   // timestamp of last host packet
-let mpReconciling = false;
-
-// ── Apply compact paddle-only packet ─────────────────────────────────────────
-function applyHostPaddle(d) {
-  if (!paddleT) paddleT = { x: d.x, y: PADDLE_MARGIN };
-  else {
-    // Smooth lerp toward host paddle position — no snapping
-    paddleT.x += (d.x - paddleT.x) * 0.35;
+  // Every 6 frames: send full sync (obstacles, powerups, effects, scores)
+  if (_mpTick % 6 === 0) {
+    mpConn.send({
+      t: 'full',
+      sT: scoreT, sB: scoreB,
+      ef: activeEffects,
+      pu: powerups.map(p => ({ cx:p.cx, cy:p.cy, vx:p.vx, vy:p.vy, type:p.type, age:p.age })),
+      ob: obstacles.map(o => ({ cx:o.cx, cy:o.cy, vx:o.vx, vy:o.vy, verts:o.verts, baseR:o.baseR, age:o.age })),
+    });
   }
 }
 
-// ── Reconcile guest local simulation with authoritative host state ────────────
-function applyNetState(d) {
-  // Smooth reconcile ball — lerp toward host position instead of snap
-  const LERP = 0.25;
+// ── Instant event packets — sent immediately on key game events ───────────────
+function sendMPEvent(type, data) {
+  if (!mpConn || !mpConn.open) return;
+  mpConn.send({ t: type, ...data });
+}
+
+// ── Apply core packet (guest) — every frame ──────────────────────────────────
+function applyCore(d) {
+  // Ball — small drift: predict locally. Large drift or direction change: snap.
   if (!ball) {
-    ball = { x: d.b.x, y: d.b.y };
+    ball = { x: d.bx, y: d.by };
     velX = d.vx; velY = d.vy;
   } else {
-    const dx = d.b.x - ball.x;
-    const dy = d.b.y - ball.y;
+    const dx   = d.bx - ball.x;
+    const dy   = d.by - ball.y;
     const dist = Math.sqrt(dx*dx + dy*dy);
-    if (dist > 80) {
-      // Large drift — snap immediately
-      ball.x = d.b.x; ball.y = d.b.y;
+    // Snap if drift > 30px or velocity direction changed (e.g. paddle hit)
+    const vFlip = (Math.sign(d.vx) !== Math.sign(velX) && Math.abs(d.vx) > 1) ||
+                  (Math.sign(d.vy) !== Math.sign(velY) && Math.abs(d.vy) > 1);
+    if (dist > 30 || vFlip) {
+      ball.x = d.bx; ball.y = d.by;
       velX = d.vx; velY = d.vy;
-    } else if (dist > 4) {
-      // Small drift — lerp smoothly
-      ball.x += dx * LERP;
-      ball.y += dy * LERP;
-      velX += (d.vx - velX) * LERP;
-      velY += (d.vy - velY) * LERP;
+    } else if (dist > 3) {
+      // Gentle lerp for small drift only
+      ball.x += dx * 0.2;
+      ball.y += dy * 0.2;
     }
-    // Under 4px — keep local prediction, no correction needed
+    // Under 3px — keep local prediction
   }
 
-  // Host paddle — smooth lerp
-  if (!paddleT) paddleT = { x: d.pT.x, y: PADDLE_MARGIN };
-  else paddleT.x += (d.pT.x - paddleT.x) * 0.35;
+  // Host paddle — lerp smoothly
+  if (!paddleT) paddleT = { x: d.pTx, y: PADDLE_MARGIN };
+  else paddleT.x += (d.pTx - paddleT.x) * 0.4;
 
-  // Guest paddle stays local — host sends it back, use as authority
-  if (!paddleB) paddleB = { x: d.pB.x, y: H - PADDLE_MARGIN - PADDLE_H };
-  else paddleB.x = d.pB.x; // host is authoritative on guest paddle position
+  // Guest paddle — host is authoritative
+  if (!paddleB) paddleB = { x: d.pBx, y: H - PADDLE_MARGIN - PADDLE_H };
+  else paddleB.x = d.pBx;
 
-  // Scores and effects — always authoritative
-  scoreT = d.sT; scoreB = d.sB;
-  activeEffects = d.ef;
+  // Countdown
   if (d.cd !== undefined) countdownTimer = d.cd;
 
-  // Ghost ball — sync authoritatively (50/50 spawn needs to match)
+  // Ghost ball — snap directly (fast moving, needs to be accurate)
   if (d.gb) {
-    if (!ghostBall) {
-      ghostBall = { ...d.gb };
-    } else {
-      ghostBall.x += (d.gb.x - ghostBall.x) * LERP;
-      ghostBall.y += (d.gb.y - ghostBall.y) * LERP;
-      ghostBall.vx = d.gb.vx; ghostBall.vy = d.gb.vy;
-      ghostBall.age = d.gb.age; ghostBall.curveSpin = d.gb.curveSpin;
-    }
+    ghostBall = { ...d.gb };
   } else {
     ghostBall = null;
   }
+}
 
-  // Power-ups — sync positions, keep local vx/vy for smooth movement prediction
+// ── Apply full sync packet (guest) — every 6 frames ──────────────────────────
+function applyFull(d) {
+  scoreT = d.sT; scoreB = d.sB;
+  activeEffects = d.ef;
+
+  // Power-ups — lerp existing, snap new ones
   if (d.pu) {
     powerups = d.pu.map((p, i) => {
-      const existing = powerups[i];
-      if (existing && existing.type === p.type) {
-        // Smooth lerp existing power-up position
-        existing.cx += (p.cx - existing.cx) * 0.3;
-        existing.cy += (p.cy - existing.cy) * 0.3;
-        existing.age = p.age;
-        return existing;
+      const ex = powerups[i];
+      if (ex && ex.type === p.type) {
+        ex.cx += (p.cx - ex.cx) * 0.3;
+        ex.cy += (p.cy - ex.cy) * 0.3;
+        ex.vx = p.vx; ex.vy = p.vy;
+        ex.age = p.age;
+        return ex;
       }
-      return { ...p, vx: 0, vy: 0 };
+      return { ...p };
     });
   }
 
-  // Obstacles — sync with lerp, preserve local velocity for prediction
+  // Obstacles — lerp position, always sync velocity so prediction works
   if (d.ob) {
     obstacles = d.ob.map((o, i) => {
-      const existing = obstacles[i];
-      if (existing && Math.abs(existing.cx - o.cx) < 60) {
-        existing.cx   += (o.cx - existing.cx) * 0.3;
-        existing.cy   += (o.cy - existing.cy) * 0.3;
-        existing.vx    = o.vx; existing.vy = o.vy;
-        existing.age   = o.age;
-        return existing;
+      const ex = obstacles[i];
+      if (ex && Math.abs(ex.cx - o.cx) < 80 && Math.abs(ex.cy - o.cy) < 80) {
+        ex.cx += (o.cx - ex.cx) * 0.3;
+        ex.cy += (o.cy - ex.cy) * 0.3;
+        ex.vx = o.vx; ex.vy = o.vy; // always sync velocity
+        ex.age = o.age;
+        return ex;
       }
+      // New obstacle — build full object
       return {
-        cx:o.cx, cy:o.cy, vx:o.vx||0, vy:o.vy||0,
-        verts:o.verts, baseR:o.baseR, boundR:o.baseR,
-        age:o.age, trail:[], angle:0, angVel:0, baseVerts:[],
+        cx: o.cx, cy: o.cy, vx: o.vx, vy: o.vy,
+        verts: o.verts, baseR: o.baseR, boundR: o.baseR,
+        age: o.age, trail: [], angle: 0, angVel: 0, baseVerts: [],
       };
     });
   }
-
-  mpLastHostTs = d.ts || performance.now();
 }
 
-// ── Send guest input + paddle position (guest → host each frame) ─────────────
+// Legacy compatibility — unused but kept to avoid reference errors
+function applyNetState(d) {}
+
+// ── Send guest input + local paddle position (guest → host each frame) ───────
 function sendGuestInput() {
   if (!mpConn || !mpConn.open) return;
   mpConn.send({
@@ -1898,50 +1901,40 @@ addTouchBtn(tcRight,  'p1r');
 addTouchBtn(tcLeftP2,  'p2l');
 addTouchBtn(tcRightP2, 'p2r');
 
+// ── Guest local prediction ───────────────────────────────────────────────────
+// Runs every frame to keep ball/obstacles moving smoothly between host packets.
+// Host packets correct any drift via applyCore (every frame) and applyFull (every 6).
+function guestPredict(dt) {
+  if (!ball || !paddleB) return;
 
-// ── Guest local simulation (client-side prediction) ──────────────────────────
-// Runs every frame on guest to predict ball/obstacle movement between host packets.
-// Host reconciliation in applyNetState corrects any drift smoothly.
-function updateGuestPrediction(dt) {
-  if (!ball || !paddleT || !paddleB) return;
-
-  // Move guest's own paddle instantly from local input (zero lag)
+  // Move guest paddle instantly — zero input lag
   const ps     = padSpeed();
-  const botRev = activeEffects.bottom.reversed > 0 ? -1 : 1;
   const pwB    = getPaddleW(false);
+  const botRev = activeEffects.bottom.reversed > 0 ? -1 : 1;
   if (keys['ArrowLeft']  || keys['a'] || keys['A']) paddleB.x -= botRev * ps * dt;
   if (keys['ArrowRight'] || keys['d'] || keys['D']) paddleB.x += botRev * ps * dt;
   paddleB.x = clamp(paddleB.x, 0, W - pwB);
 
-  // Predict ball movement
-  if (curveSpin !== 0) {
-    velX += curveSpin * dt;
-    const spd = Math.sqrt(velX*velX + velY*velY);
-    if (spd > 0) { velX = velX/spd * ballSpeed; velY = velY/spd * ballSpeed; }
-    curveSpin *= Math.pow(0.993, dt);
-    if (Math.abs(curveSpin) < 0.004) curveSpin = 0;
-  }
+  // Predict ball — wall bounces only, no scoring or paddle collision
+  // (host handles those and snaps us back via applyCore velocity flip detection)
   ball.x += velX * dt;
   ball.y += velY * dt;
-
-  // Wall bounces
   if (ball.x - BALL_R < 0)   { ball.x = BALL_R;     velX =  Math.abs(velX); }
   if (ball.x + BALL_R > W)   { ball.x = W - BALL_R; velX = -Math.abs(velX); }
-
-  // Don't simulate scoring — let host be authoritative
-  // Just clamp ball to field so it doesn't fly off screen between packets
+  // Clamp Y so ball doesn't fly off screen — scoring handled by host
   ball.y = clamp(ball.y, BALL_R, H - BALL_R);
 
-  // Predict obstacle movement
+  // Predict obstacle movement using synced velocity
   for (const obs of obstacles) {
     if (!obs.vx && !obs.vy) continue;
     obs.cx += obs.vx * dt;
     obs.cy += obs.vy * dt;
-    if (obs.cx - obs.baseR < 0)   { obs.cx = obs.baseR;        obs.vx =  Math.abs(obs.vx); }
-    if (obs.cx + obs.baseR > W)   { obs.cx = W - obs.baseR;    obs.vx = -Math.abs(obs.vx); }
-    if (obs.cy - obs.baseR < 0)   { obs.cy = obs.baseR;        obs.vy =  Math.abs(obs.vy); }
-    if (obs.cy + obs.baseR > H)   { obs.cy = H - obs.baseR;    obs.vy = -Math.abs(obs.vy); }
-    updateTrail(obs.trail || (obs.trail = []), obs.cx, obs.cy);
+    if (obs.cx - obs.baseR < 0)   { obs.cx = obs.baseR;     obs.vx =  Math.abs(obs.vx); }
+    if (obs.cx + obs.baseR > W)   { obs.cx = W - obs.baseR; obs.vx = -Math.abs(obs.vx); }
+    if (obs.cy - obs.baseR < 0)   { obs.cy = obs.baseR;     obs.vy =  Math.abs(obs.vy); }
+    if (obs.cy + obs.baseR > H)   { obs.cy = H - obs.baseR; obs.vy = -Math.abs(obs.vy); }
+    if (!obs.trail) obs.trail = [];
+    updateTrail(obs.trail, obs.cx, obs.cy);
   }
 
   // Predict power-up movement
@@ -1951,8 +1944,8 @@ function updateGuestPrediction(dt) {
     pu.cy += pu.vy * dt;
     if (pu.cx - PU_R < 0)               { pu.cx = PU_R;               pu.vx =  Math.abs(pu.vx); }
     if (pu.cx + PU_R > W)               { pu.cx = W - PU_R;           pu.vx = -Math.abs(pu.vx); }
-    if (pu.cy - PU_R < PU_WALL_PAD)     { pu.cy = PU_WALL_PAD + PU_R; pu.vy =  Math.abs(pu.vy); }
-    if (pu.cy + PU_R > H - PU_WALL_PAD) { pu.cy = H - PU_WALL_PAD - PU_R; pu.vy = -Math.abs(pu.vy); }
+    if (pu.cy - PU_R < PU_WALL_PAD)     { pu.cy = PU_WALL_PAD+PU_R;   pu.vy =  Math.abs(pu.vy); }
+    if (pu.cy + PU_R > H - PU_WALL_PAD) { pu.cy = H-PU_WALL_PAD-PU_R; pu.vy = -Math.abs(pu.vy); }
   }
 
   // Predict ghost ball
@@ -1966,7 +1959,7 @@ function updateGuestPrediction(dt) {
     if (ghostBall.age >= GHOST_MAX_AGE) ghostBall = null;
   }
 
-  // Update ball trail for guest
+  // Update trails
   updateTrail(ballTrail, ball.x, ball.y);
   if (ghostBall) updateTrail(ghostTrail, ghostBall.x, ghostBall.y);
 }
@@ -1976,11 +1969,9 @@ function loop(ts) {
   const dt = Math.min((ts - lastTime) / 16.67, 2);
   lastTime = ts;
   if (mpMode === 'guest') {
-    // Guest: send input AND run local simulation for smooth prediction
     sendGuestInput();
-    if (!mpGuestPaused && gameState === 'playing') {
-      updateGuestPrediction(dt);
-    }
+    // Guest runs local prediction for smooth rendering between host packets
+    if (!mpGuestPaused && gameState === 'playing') guestPredict(dt);
     draw();
   } else {
     if (!paused && gameState==='playing') update(dt);
