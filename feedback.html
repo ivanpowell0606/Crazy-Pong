@@ -119,8 +119,26 @@
     </div>
   </div>
 
+  <!-- ── Submit feedback form ── -->
+  <div id="submit-form" style="width:100%;max-width:640px;border:1px solid #1a1a1a;padding:1.2rem;margin-bottom:1.6rem;display:flex;flex-direction:column;gap:10px">
+    <p style="font-size:0.55rem;color:#444;letter-spacing:0.18rem">LEAVE A REVIEW</p>
+    <input id="fb-name" class="admin-input" type="text" placeholder="YOUR NAME (optional)" maxlength="32" autocomplete="off" autocapitalize="none" style="max-width:100%">
+    <div id="fb-stars" style="display:flex;gap:10px;font-size:1.8rem;cursor:pointer">
+      <span class="star" onclick="setStarPage(1)">☆</span>
+      <span class="star" onclick="setStarPage(2)">☆</span>
+      <span class="star" onclick="setStarPage(3)">☆</span>
+      <span class="star" onclick="setStarPage(4)">☆</span>
+      <span class="star" onclick="setStarPage(5)">☆</span>
+    </div>
+    <p id="fb-star-label" style="font-size:0.55rem;color:#444;letter-spacing:0.1rem;min-height:1em"></p>
+    <textarea id="fb-comment" class="admin-input" placeholder="COMMENT (optional)" maxlength="500" rows="4" style="resize:none;font-family:'Courier New',monospace;font-size:0.72rem;max-width:100%"></textarea>
+    <p id="fb-err" style="font-size:0.6rem;color:#f44336;letter-spacing:0.06rem;min-height:1em"></p>
+    <button class="admin-btn" onclick="submitPageFeedback()" style="align-self:flex-start;border-color:#fff;color:#fff;padding:8px 20px;font-size:0.65rem">SUBMIT</button>
+  </div>
+
   <div id="feedback-list">
     <p id="loading">LOADING FEEDBACK…</p>
+  </div>
   </div>
 
   <div id="admin-panel" style="display:none">
@@ -254,6 +272,52 @@
         }
       } else {
         tapTimer = setTimeout(() => { tapCount = 0; }, 1200);
+      }
+    }
+
+    // ── Page feedback form ──────────────────────────────────────────────────
+    let pageStarVal = 0;
+    const starLabels = ['','POOR','FAIR','GOOD','GREAT','EXCELLENT'];
+
+    function setStarPage(val) {
+      pageStarVal = val;
+      document.querySelectorAll('#fb-stars .star').forEach((s, i) => {
+        s.textContent = i < val ? '★' : '☆';
+        s.style.color = i < val ? '#fff' : '#333';
+      });
+      document.getElementById('fb-star-label').textContent = starLabels[val] || '';
+    }
+
+    async function submitPageFeedback() {
+      const name    = document.getElementById('fb-name').value.trim() || 'Anonymous';
+      const comment = document.getElementById('fb-comment').value.trim();
+      const errEl   = document.getElementById('fb-err');
+
+      if (!pageStarVal) { errEl.style.color='#f44336'; errEl.textContent = 'Please select a star rating.'; return; }
+
+      errEl.style.color = '#aaa';
+      errEl.textContent = 'Submitting…';
+
+      try {
+        const res  = await fetch(FEEDBACK_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'submitFeedback', name, rating: pageStarVal, comment }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          errEl.style.color = '#4caf50';
+          errEl.textContent = 'Thanks for your feedback!';
+          document.getElementById('fb-name').value    = '';
+          document.getElementById('fb-comment').value = '';
+          setStarPage(0);
+          setTimeout(() => { errEl.textContent = ''; loadFeedback(); }, 1800);
+        } else {
+          errEl.style.color = '#f44336';
+          errEl.textContent = data.error || 'Submission failed.';
+        }
+      } catch(e) {
+        errEl.style.color = '#f44336';
+        errEl.textContent = 'Network error. Try again.';
       }
     }
 
