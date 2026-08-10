@@ -1063,9 +1063,9 @@ function joinGame() {
         setReadyPtsBtnsEnabled(false);
       }
       else if (d.t === 'start')        startMPGameAsGuest();
+      else if (d.t === 'snap')         applySnap(d);
       else if (d.t === 'core')         applyCore(d);
       else if (d.t === 'full')         applyFull(d);
-      else if (d.t === 'state')        applyNetState(d); // legacy fallback
       else if (d.t === 'gameover')     mpGameOver(d);
       else if (d.t === 'pause')        { mpGuestPaused = true; }
       else if (d.t === 'resume')       { mpGuestPaused = false; }
@@ -1122,13 +1122,24 @@ function startMPGameAsGuest() {
   animId = requestAnimationFrame(loop);
 }
 
+// ── Snap reset packet — sent immediately after a score ──────────────────────
+// Tells guest to clear all local state and sync instantly, no lerp
+function sendSnapReset() {
+  if (!mpConn || !mpConn.open) return;
+  mpConn.send({
+    t: 'snap',
+    bx: ball.x, by: ball.y, vx: velX, vy: velY,
+    pTx: paddleT.x, pBx: paddleB.x,
+    sT: scoreT, sB: scoreB,
+    cd: countdownTimer,
+    ef: activeEffects,
+  });
+}
+
 // ── Send state (host → guest) ────────────────────────────────────────────────
 // Every frame: compact core packet (ball + paddles)
 // Every 6 frames: full sync packet (obstacles, powerups, effects)
 let _mpTick = 0;
-let _mpLastEf  = null;
-let _mpLastObCount = 0;
-let _mpLastPuCount = 0;
 
 function sendState() {
   if (!mpConn || !mpConn.open) return;
@@ -1160,10 +1171,21 @@ function sendState() {
   }
 }
 
-// ── Instant event packets — sent immediately on key game events ───────────────
-function sendMPEvent(type, data) {
-  if (!mpConn || !mpConn.open) return;
-  mpConn.send({ t: type, ...data });
+// ── Apply snap reset (guest) — immediate full clear and sync ────────────────
+function applySnap(d) {
+  // Clear all local prediction state instantly
+  ball     = { x: d.bx, y: d.by };
+  velX     = d.vx; velY = d.vy;
+  paddleT  = { x: d.pTx, y: PADDLE_MARGIN };
+  paddleB  = { x: d.pBx, y: H - PADDLE_MARGIN - PADDLE_H };
+  scoreT   = d.sT; scoreB = d.sB;
+  activeEffects = d.ef;
+  countdownTimer = d.cd;
+  obstacles  = [];
+  powerups   = [];
+  ghostBall  = null;
+  ballTrail  = []; ghostTrail = [];
+  curveSpin  = 0; ballSpeed = BASE_SPEED;
 }
 
 // ── Apply core packet (guest) — every frame ──────────────────────────────────
@@ -1275,9 +1297,6 @@ function applyFull(d) {
     });
   }
 }
-
-// Legacy compatibility — unused but kept to avoid reference errors
-function applyNetState(d) {}
 
 // ── Send guest input + local paddle position (guest → host each frame) ───────
 function sendGuestInput() {
@@ -1889,8 +1908,6 @@ document.body.classList.toggle('touch-mode', touchMode);
 scaleGame();
 setTimeout(scaleGame, 100); // re-run after layout settles
 
-
-
 // Touch controls
 const tcLeft  = document.getElementById('touch-left');
 const tcRight = document.getElementById('touch-right');
@@ -2172,12 +2189,14 @@ function update(dt) {
     scoreB++; sfx.score(); if (settings.visuals.screenShake) shakeAmt = 8;
     if (scoreB>=WINNING_SCORE) { endGame(); return; }
     resetRound(1);
+    if (mpMode === 'host') sendSnapReset();
   }
   if (ball.y > H+BALL_R*2) {
     if (labMode) { resetRound(-1); return; }
     scoreT++; sfx.score(); if (settings.visuals.screenShake) shakeAmt = 8;
     if (scoreT>=WINNING_SCORE) { endGame(); return; }
     resetRound(-1);
+    if (mpMode === 'host') sendSnapReset();
   }
 }
 
@@ -2406,20 +2425,6 @@ function hitPaddle(paddle, side, velDir) {
 
 // ── AI ────────────────────────────────────────────────────────────────────────
 // Predict where the ball will cross the AI paddle's Y line, bouncing off walls
-function predictBallX() {
-  // Simulate ball path to paddleB Y, accounting for wall bounces
-  let bx = ball.x, by = ball.y, bvx = velX, bvy = velY;
-  const targetY = paddleB.y;
-  if (bvy <= 0) return ball.x;
-  for (let i = 0; i < 600; i++) {
-    bx += bvx;
-    by += bvy;
-    if (bx - BALL_R < 0)    { bx = BALL_R;     bvx =  Math.abs(bvx); }
-    if (bx + BALL_R > W)    { bx = W - BALL_R; bvx = -Math.abs(bvx); }
-    if (by >= targetY) break;
-  }
-  return bx;
-}
 
 function aiMove(dt, ps) {
   const cfg    = DIFF[difficulty];
@@ -3253,8 +3258,6 @@ async function loadAndShowStats() {
 // ── MP identity handshake (guest sends username+token to host after connect) ──
 let mpGuestUsername = null;
 let mpGuestToken    = null;
-
-
 
 function endGame() {
   gameState = 'over';
