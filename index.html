@@ -1854,10 +1854,11 @@ let currentScreen = 'mode-screen';
 let touchMode = ('ontouchstart' in window) && window.innerWidth < 800;
 
 // The lab's sidebar+canvas side-by-side layout needs real estate — below this
-// width it doesn't fit even on a non-touch desktop browser, so it falls back
-// to the same compact tabbed panel used on touch devices.
+// width it doesn't fit, regardless of touch vs non-touch. A wide touchscreen
+// gets the full sidebar just like desktop; a narrow window (touch or not)
+// gets the compact tabbed panel instead.
 const LAB_NARROW_BREAKPOINT = 820;
-const isNarrowForLab = () => touchMode || window.innerWidth <= LAB_NARROW_BREAKPOINT;
+const isNarrowForLab = () => window.innerWidth <= LAB_NARROW_BREAKPOINT;
 
 function setTouchMode(val) {
   if (touchMode === val) return;
