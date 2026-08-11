@@ -91,9 +91,7 @@
     body.touch-mode .subtitle { font-size: 0.72rem; letter-spacing: 0.08rem; }
     body.touch-mode .btn { min-width: 200px; }
     body.touch-mode #game-screen { padding-top: 6px; gap: 0.3rem; }
-    body.touch-mode #lab-sidebar { display: none !important; }
     body.touch-mode #pause-hint { display: none; }
-    body.touch-mode #game-layout { gap: 0; }
     /* Always apply compact layout on genuinely small screens */
     @media (max-width: 500px) {
       html { font-size: clamp(13px, 3.8vw, 16px); }
@@ -537,7 +535,6 @@
         <div style="display:flex;gap:6px">
           <button id="lab-reset-btn" onclick="labResetAll()">RESET ALL EFFECTS</button>
           <button id="lab-obs-btn"   onclick="labForceObstacle()">+ SPAWN OBSTACLE</button>
-          <button id="lab-back-btn"  onclick="backToMenu()" style="border-color:#333;color:#444;padding:7px 12px;background:transparent;font-family:'Courier New',monospace;font-size:0.58rem;letter-spacing:0.12rem;cursor:pointer;border-radius:3px;border:1px solid #333;transition:background 0.12s,color 0.12s" onmouseover="this.style.background='#111';this.style.color='#888'" onmouseout="this.style.background='transparent';this.style.color='#444'">← MAIN MENU</button>
         </div>
         <div class="lab-controls-info" style="margin:0;text-align:left">
           <span>P1 (top paddle)</span> &nbsp;A / D &nbsp;·&nbsp; ← / → to move &nbsp;·&nbsp; SPACE to pause
@@ -568,12 +565,17 @@
           <button class="pu-btn" id="mb-bot-shrink"  style="--col:#ff5252" onclick="labToggle('bot','shrink')"><div><div class="pname">SHRINK YOU</div></div><span class="ppill">OFF</span></button>
           <button class="pu-btn" id="mb-bot-reverse" style="--col:#e040fb" onclick="labToggle('bot','reverse')"><div><div class="pname">REVERSE YOU</div></div><span class="ppill">OFF</span></button>
         </div>
-        <!-- Difficulty + reset row -->
-        <div style="display:flex;gap:6px;margin-top:4px;align-items:center">
+        <!-- Difficulty row -->
+        <p class="lab-section-label" style="margin-top:4px">AI DIFFICULTY</p>
+        <div style="display:flex;gap:6px;align-items:center">
           <button class="lab-diff-btn" id="mb-diff-easy"   onclick="setLabDiff('easy')">EASY</button>
           <button class="lab-diff-btn active" id="mb-diff-medium" onclick="setLabDiff('medium')">MED</button>
           <button class="lab-diff-btn" id="mb-diff-hard"   onclick="setLabDiff('hard')">HARD</button>
-          <button onclick="labResetAll()" style="flex:1;padding:5px;border:1px solid #333;background:transparent;color:#555;font-family:'Courier New',monospace;font-size:0.5rem;letter-spacing:0.08rem;cursor:pointer;border-radius:2px">RESET</button>
+        </div>
+        <!-- Reset + spawn obstacle row -->
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <button onclick="labResetAll()" style="flex:1;padding:6px 4px;border:1px solid #333;background:transparent;color:#555;font-family:'Courier New',monospace;font-size:0.5rem;letter-spacing:0.06rem;cursor:pointer;border-radius:2px">RESET EFFECTS</button>
+          <button onclick="labForceObstacle()" style="flex:1;padding:6px 4px;border:1px solid #333;background:transparent;color:#555;font-family:'Courier New',monospace;font-size:0.5rem;letter-spacing:0.06rem;cursor:pointer;border-radius:2px">+ SPAWN OBSTACLE</button>
         </div>
       </div>
     </div>
@@ -1098,6 +1100,7 @@ function joinGame() {
 function startMPGame() {
   _mpTick = 0;
   labMode = false; mode = 'mp'; difficulty = null;
+  document.body.classList.remove('lab-active');
   mpGuestPaused = false; chatOpen = false; chatVisible = false; chatUnread = 0;
   document.getElementById('chat-input-bar').style.display = 'none';
   const mobileChat = document.getElementById('mobile-chat');
@@ -1114,6 +1117,7 @@ function startMPGame() {
 // ── Start MP game (guest) ──────────────────────────────────────────────────────
 function startMPGameAsGuest() {
   labMode = false; mode = 'mp'; difficulty = null;
+  document.body.classList.remove('lab-active');
   mpGuestPaused = false; chatOpen = false; chatVisible = false; chatUnread = 0;
   document.getElementById('chat-input-bar').style.display = 'none';
   const mobileChatG = document.getElementById('mobile-chat');
@@ -1664,7 +1668,7 @@ function showOnly(id) {
   if (tcP2) tcP2.style.display = (showTouch && mode === '2p') ? 'flex' : 'none';
 
   document.getElementById('pause-hint').style.display = (labMode || touchMode) ? 'none' : '';
-  document.getElementById('mobile-quit').style.display     = showTouch ? 'block' : 'none';
+  document.getElementById('mobile-quit').style.display     = inGame ? 'block' : 'none';
   document.getElementById('mobile-chat').style.display     = (showTouch && inMPArea) ? 'block' : 'none';
   document.getElementById('mobile-pause').style.display    = (showTouch && mpMode === 'host' && inGame) ? 'block' : 'none';
   const fsBtn = document.getElementById('fullscreen-btn');
@@ -1682,6 +1686,7 @@ const showDifficulty = () => showOnly('difficulty-screen');
 // ── Start / reset ─────────────────────────────────────────────────────────────
 function startGame(m, diff) {
   labMode = false; mode = m; difficulty = diff;
+  document.body.classList.remove('lab-active'); // guarantee no stale lab styling leaks into a real game
   showOnly('game-screen');
   scoreT = scoreB = 0;
   resetRound(0);
@@ -1853,12 +1858,16 @@ let currentScreen = 'mode-screen';
 // false = keyboard mode (full desktop layout)
 let touchMode = ('ontouchstart' in window) && window.innerWidth < 800;
 
-// The lab's sidebar+canvas side-by-side layout needs real estate — below this
-// width it doesn't fit, regardless of touch vs non-touch. A wide touchscreen
-// gets the full sidebar just like desktop; a narrow window (touch or not)
-// gets the compact tabbed panel instead.
-const LAB_NARROW_BREAKPOINT = 820;
-const isNarrowForLab = () => window.innerWidth <= LAB_NARROW_BREAKPOINT;
+// The lab's sidebar+canvas side-by-side layout needs real estate in BOTH
+// directions — width for the sidebar to sit next to the canvas, and height
+// for the sidebar's own content (several button groups) to fully fit without
+// getting clipped. A landscape phone can be plenty wide but too short, so
+// width alone isn't a reliable signal — both must clear their thresholds.
+const LAB_NARROW_BREAKPOINT_W = 820;
+const LAB_NARROW_BREAKPOINT_H = 560;
+const isNarrowForLab = () =>
+  window.innerWidth <= LAB_NARROW_BREAKPOINT_W ||
+  window.innerHeight <= LAB_NARROW_BREAKPOINT_H;
 
 function setTouchMode(val) {
   if (touchMode === val) return;
