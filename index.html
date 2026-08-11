@@ -1021,7 +1021,10 @@ function hostGame() {
       setReadyPtsBtnsEnabled(true);
     });
     conn.on('data', d => {
-      if      (d.t === 'input')    { guestInputs.l = d.l; guestInputs.r = d.r; }
+      if      (d.t === 'input')    {
+        guestInputs.l = d.l; guestInputs.r = d.r;
+        if (d.px !== null && d.px !== undefined && paddleB) paddleB.x += (d.px - paddleB.x) * 0.35;
+      }
       else if (d.t === 'ready')    { mpGuestReady = true; updateReadyStatus(); if (mpHostReady && mpGuestReady) startMPRematch(); }
       else if (d.t === 'chat')     { receiveChatMessage(d.text); }
       else if (d.t === 'identity') { mpGuestUsername = d.username; mpGuestToken = d.token; }
@@ -1060,6 +1063,9 @@ function joinGame() {
         setReadyPtsBtnsEnabled(false);
       }
       else if (d.t === 'start')        startMPGameAsGuest();
+      else if (d.t === 'snap')         applySnap(d);
+      else if (d.t === 'core')         applyCore(d);
+      else if (d.t === 'full')         applyFull(d);
       else if (d.t === 'state')        applyNetState(d);
       else if (d.t === 'gameover')     mpGameOver(d);
       else if (d.t === 'pause')        { mpGuestPaused = true; }
@@ -1087,6 +1093,7 @@ function joinGame() {
 
 // ── Start MP game (host) ───────────────────────────────────────────────────────
 function startMPGame() {
+  _mpTick = 0;
   labMode = false; mode = 'mp'; difficulty = null;
   mpGuestPaused = false; chatOpen = false; chatVisible = false; chatUnread = 0;
   document.getElementById('chat-input-bar').style.display = 'none';
@@ -1116,18 +1123,43 @@ function startMPGameAsGuest() {
   animId = requestAnimationFrame(loop);
 }
 
-// ── Send state (host → guest every frame) ─────────────────────────────────────
+// ── Send state (host → guest) ────────────────────────────────────────────────
+// core packet every frame (ball + paddles), full packet every 6 frames
+let _mpTick = 0;
 function sendState() {
   if (!mpConn || !mpConn.open) return;
+  _mpTick++;
   mpConn.send({
-    t: 'state',
-    b:  { x: ball.x, y: ball.y },
-    pT: { x: paddleT.x }, pB: { x: paddleB.x },
+    t: 'core',
+    bx: ball.x, by: ball.y, vx: velX, vy: velY,
+    pTx: paddleT.x, pBx: paddleB.x,
+    cd: countdownTimer,
+    gb: ghostBall ? { x:ghostBall.x, y:ghostBall.y, vx:ghostBall.vx, vy:ghostBall.vy,
+      age:ghostBall.age, curveSpin:ghostBall.curveSpin, speed:ghostBall.speed } : null,
+  });
+  if (_mpTick % 6 === 0) {
+    mpConn.send({
+      t: 'full',
+      sT: scoreT, sB: scoreB, ef: activeEffects,
+      pu: powerups.map(p => ({ cx:p.cx, cy:p.cy, vx:p.vx, vy:p.vy, type:p.type, age:p.age })),
+      ob: obstacles.map(o => ({
+        cx:o.cx, cy:o.cy, vx:o.vx, vy:o.vy,
+        baseVerts:o.baseVerts, baseR:o.baseR, boundR:o.boundR,
+        angle:o.angle, angVel:o.angVel, age:o.age,
+      })),
+    });
+  }
+}
+
+// ── Send snap reset — immediate full sync after a score ───────────────────────
+function sendSnapReset() {
+  if (!mpConn || !mpConn.open) return;
+  mpConn.send({
+    t: 'snap',
+    bx: ball.x, by: ball.y, vx: velX, vy: velY,
+    pTx: paddleT.x, pBx: paddleB.x,
     sT: scoreT, sB: scoreB,
-    vx: velX, vy: velY,
-    ef: activeEffects, cd: countdownTimer, gb: ghostBall,
-    pu: powerups.map(p => ({ cx:p.cx, cy:p.cy, type:p.type, age:p.age })),
-    ob: obstacles.map(o => ({ cx:o.cx, cy:o.cy, verts:o.verts, baseR:o.baseR, age:o.age, trail:o.trail })),
+    cd: countdownTimer, ef: activeEffects,
   });
 }
 
@@ -1149,12 +1181,140 @@ function applyNetState(d) {
   }));
 }
 
+// ── Guest client-side prediction functions ───────────────────────────────────
+
+function applySnap(d) {
+  // Hard reset — called after a score
+  ball    = { x: d.bx, y: d.by };
+  velX = d.vx; velY = d.vy;
+  paddleT = { x: d.pTx, y: PADDLE_MARGIN };
+  paddleB = { x: d.pBx, y: H - PADDLE_MARGIN - PADDLE_H };
+  scoreT = d.sT; scoreB = d.sB;
+  activeEffects = d.ef; countdownTimer = d.cd;
+  obstacles = []; powerups = []; ghostBall = null;
+  ballTrail = []; ghostTrail = []; curveSpin = 0; ballSpeed = BASE_SPEED;
+}
+
+function applyCore(d) {
+  // Ball — snap if direction flipped (paddle hit) or large drift, else gentle lerp
+  if (!ball) { ball = { x: d.bx, y: d.by }; velX = d.vx; velY = d.vy; }
+  else {
+    const dx = d.bx - ball.x, dy = d.by - ball.y;
+    const vFlip = (Math.sign(d.vx) !== Math.sign(velX) && Math.abs(d.vx) > 1) ||
+                  (Math.sign(d.vy) !== Math.sign(velY) && Math.abs(d.vy) > 1);
+    if (dx*dx + dy*dy > 1600 || vFlip) {
+      ball.x = d.bx; ball.y = d.by; velX = d.vx; velY = d.vy;
+    } else if (dx*dx + dy*dy > 9) {
+      ball.x += dx * 0.2; ball.y += dy * 0.2;
+    }
+  }
+  // Host paddle — lerp smoothly
+  if (!paddleT) paddleT = { x: d.pTx, y: PADDLE_MARGIN };
+  else paddleT.x += (d.pTx - paddleT.x) * 0.4;
+  // Guest paddle — host is authoritative
+  if (!paddleB) paddleB = { x: d.pBx, y: H - PADDLE_MARGIN - PADDLE_H };
+  else paddleB.x = d.pBx;
+  if (d.cd !== undefined) countdownTimer = d.cd;
+  ghostBall = d.gb ? { ...d.gb } : null;
+}
+
+function applyFull(d) {
+  scoreT = d.sT; scoreB = d.sB;
+  activeEffects = d.ef;
+  // Power-ups — match by type+proximity to avoid index mismatch on collection
+  if (d.pu !== undefined) {
+    if (!d.pu.length) { powerups = []; }
+    else {
+      powerups = d.pu.map(p => {
+        const ex = powerups.find(e => e.type===p.type && Math.abs(e.cx-p.cx)<100 && Math.abs(e.cy-p.cy)<100);
+        if (ex) { ex.cx+=(p.cx-ex.cx)*0.3; ex.cy+=(p.cy-ex.cy)*0.3; ex.vx=p.vx; ex.vy=p.vy; ex.age=p.age; return ex; }
+        return { ...p };
+      });
+    }
+  }
+  // Obstacles — lerp position, sync velocity + rotation, recompute verts from baseVerts
+  if (d.ob !== undefined) {
+    obstacles = d.ob.map((o, i) => {
+      const ex = obstacles[i];
+      if (ex && Math.abs(ex.cx-o.cx)<80 && Math.abs(ex.cy-o.cy)<80) {
+        ex.cx+=(o.cx-ex.cx)*0.3; ex.cy+=(o.cy-ex.cy)*0.3;
+        ex.vx=o.vx; ex.vy=o.vy; ex.angle=o.angle; ex.angVel=o.angVel; ex.age=o.age;
+        if (o.baseVerts && o.baseVerts.length) {
+          ex.baseVerts=o.baseVerts;
+          const c=Math.cos(ex.angle), s=Math.sin(ex.angle);
+          ex.verts=ex.baseVerts.map(v=>({ x:ex.cx+v.x*c-v.y*s, y:ex.cy+v.x*s+v.y*c }));
+        }
+        return ex;
+      }
+      const bv=o.baseVerts||[], c=Math.cos(o.angle||0), s=Math.sin(o.angle||0);
+      return {
+        cx:o.cx, cy:o.cy, vx:o.vx, vy:o.vy,
+        baseVerts:bv, verts:bv.map(v=>({ x:o.cx+v.x*c-v.y*s, y:o.cy+v.x*s+v.y*c })),
+        baseR:o.baseR, boundR:o.boundR||o.baseR,
+        age:o.age, trail:[], angle:o.angle||0, angVel:o.angVel||0,
+      };
+    });
+  }
+}
+
+function guestPredict(dt) {
+  if (!ball || !paddleB || !paddleT) return;
+  // Move guest's own paddle instantly — zero input lag
+  const ps=padSpeed(), pwB=getPaddleW(false);
+  const botRev = activeEffects.bottom.reversed > 0 ? -1 : 1;
+  if (keys['ArrowLeft']  || keys['a'] || keys['A']) paddleB.x -= botRev*ps*dt;
+  if (keys['ArrowRight'] || keys['d'] || keys['D']) paddleB.x += botRev*ps*dt;
+  paddleB.x = clamp(paddleB.x, 0, W-pwB);
+  // Predict ball — wall bounces only, scoring handled by host
+  ball.x += velX*dt; ball.y += velY*dt;
+  if (ball.x-BALL_R<0)   { ball.x=BALL_R;     velX= Math.abs(velX); }
+  if (ball.x+BALL_R>W)   { ball.x=W-BALL_R;   velX=-Math.abs(velX); }
+  ball.y = clamp(ball.y, BALL_R, H-BALL_R);
+  // Predict obstacles
+  for (const obs of obstacles) {
+    obs.cx+=obs.vx*dt; obs.cy+=obs.vy*dt;
+    obs.angle=(obs.angle||0)+(obs.angVel||0)*dt;
+    if (obs.cx-obs.baseR<0)   { obs.cx=obs.baseR;   obs.vx= Math.abs(obs.vx); }
+    if (obs.cx+obs.baseR>W)   { obs.cx=W-obs.baseR; obs.vx=-Math.abs(obs.vx); }
+    if (obs.cy-obs.baseR<0)   { obs.cy=obs.baseR;   obs.vy= Math.abs(obs.vy); }
+    if (obs.cy+obs.baseR>H)   { obs.cy=H-obs.baseR; obs.vy=-Math.abs(obs.vy); }
+    if (obs.baseVerts && obs.baseVerts.length) {
+      const c=Math.cos(obs.angle), s=Math.sin(obs.angle);
+      obs.verts=obs.baseVerts.map(v=>({ x:obs.cx+v.x*c-v.y*s, y:obs.cy+v.x*s+v.y*c }));
+    }
+    if (!obs.trail) obs.trail=[];
+    updateTrail(obs.trail, obs.cx, obs.cy);
+  }
+  // Predict power-ups
+  for (const pu of powerups) {
+    if (!pu.vx && !pu.vy) continue;
+    pu.cx+=pu.vx*dt; pu.cy+=pu.vy*dt;
+    if (pu.cx-PU_R<0)               { pu.cx=PU_R;             pu.vx= Math.abs(pu.vx); }
+    if (pu.cx+PU_R>W)               { pu.cx=W-PU_R;           pu.vx=-Math.abs(pu.vx); }
+    if (pu.cy-PU_R<PU_WALL_PAD)     { pu.cy=PU_WALL_PAD+PU_R; pu.vy= Math.abs(pu.vy); }
+    if (pu.cy+PU_R>H-PU_WALL_PAD)   { pu.cy=H-PU_WALL_PAD-PU_R; pu.vy=-Math.abs(pu.vy); }
+  }
+  // Predict ghost ball
+  if (ghostBall) {
+    ghostBall.x+=ghostBall.vx*dt; ghostBall.y+=ghostBall.vy*dt;
+    if (ghostBall.x-BALL_R<0) { ghostBall.x=BALL_R;   ghostBall.vx= Math.abs(ghostBall.vx); }
+    if (ghostBall.x+BALL_R>W) { ghostBall.x=W-BALL_R; ghostBall.vx=-Math.abs(ghostBall.vx); }
+    ghostBall.y=clamp(ghostBall.y, BALL_R, H-BALL_R);
+    ghostBall.age+=dt;
+    if (ghostBall.age>=GHOST_MAX_AGE) ghostBall=null;
+  }
+  updateTrail(ballTrail, ball.x, ball.y);
+  if (ghostBall) updateTrail(ghostTrail, ghostBall.x, ghostBall.y);
+}
+
 // ── Send guest input (guest → host each frame) ────────────────────────────────
 function sendGuestInput() {
   if (!mpConn || !mpConn.open) return;
-  mpConn.send({ t:'input',
+  mpConn.send({
+    t: 'input',
     l: !!(keys['ArrowLeft']  || keys['a'] || keys['A']),
     r: !!(keys['ArrowRight'] || keys['d'] || keys['D']),
+    px: paddleB ? paddleB.x : null,
   });
 }
 
@@ -1800,8 +1960,8 @@ function loop(ts) {
   const dt = Math.min((ts - lastTime) / 16.67, 2);
   lastTime = ts;
   if (mpMode === 'guest') {
-    // Guest: send input, render received state — no simulation
     sendGuestInput();
+    if (!mpGuestPaused && gameState === 'playing') guestPredict(dt);
     draw();
   } else {
     if (!paused && gameState==='playing') update(dt);
@@ -1968,12 +2128,14 @@ function update(dt) {
     scoreB++; sfx.score(); if (settings.visuals.screenShake) shakeAmt = 8;
     if (scoreB>=WINNING_SCORE) { endGame(); return; }
     resetRound(1);
+    if (mpMode === 'host') sendSnapReset();
   }
   if (ball.y > H+BALL_R*2) {
     if (labMode) { resetRound(-1); return; }
     scoreT++; sfx.score(); if (settings.visuals.screenShake) shakeAmt = 8;
     if (scoreT>=WINNING_SCORE) { endGame(); return; }
     resetRound(-1);
+    if (mpMode === 'host') sendSnapReset();
   }
 }
 
