@@ -818,7 +818,7 @@
 // ── Audio ─────────────────────────────────────────────────────────────────────
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let volume = 0.4;
-UI.volSlider.addEventListener('input', e => { volume = +e.target.value; });
+document.getElementById('vol-slider').addEventListener('input', e => { volume = +e.target.value; });
 
 function beep(freq, dur, type = 'square') {
   if (!volume) return;
@@ -844,7 +844,6 @@ const W = 560, H = 660;
 const PADDLE_W = 96, PADDLE_H = 12, PADDLE_MARGIN = 22;
 const BALL_R = 5;
 let   WINNING_SCORE   = 4;   // adjustable in settings (3–11)
-const EFFECT_KEYS = ['wide','curve','power','split','shrunk','reversed'];
 const BASE_SPEED      = 5.5;
 const SPEED_INC       = 0.2;
 const MAX_SPEED       = 13;
@@ -1022,10 +1021,7 @@ function hostGame() {
       setReadyPtsBtnsEnabled(true);
     });
     conn.on('data', d => {
-      if      (d.t === 'input')    {
-        guestInputs.l = d.l; guestInputs.r = d.r;
-        if (d.px !== null && d.px !== undefined && paddleB) paddleB.x += (d.px - paddleB.x) * 0.35;
-      }
+      if      (d.t === 'input')    { guestInputs.l = d.l; guestInputs.r = d.r; }
       else if (d.t === 'ready')    { mpGuestReady = true; updateReadyStatus(); if (mpHostReady && mpGuestReady) startMPRematch(); }
       else if (d.t === 'chat')     { receiveChatMessage(d.text); }
       else if (d.t === 'identity') { mpGuestUsername = d.username; mpGuestToken = d.token; }
@@ -1064,9 +1060,6 @@ function joinGame() {
         setReadyPtsBtnsEnabled(false);
       }
       else if (d.t === 'start')        startMPGameAsGuest();
-      else if (d.t === 'snap')         applySnap(d);
-      else if (d.t === 'core')         applyCore(d);
-      else if (d.t === 'full')         applyFull(d);
       else if (d.t === 'state')        applyNetState(d);
       else if (d.t === 'gameover')     mpGameOver(d);
       else if (d.t === 'pause')        { mpGuestPaused = true; }
@@ -1094,10 +1087,9 @@ function joinGame() {
 
 // ── Start MP game (host) ───────────────────────────────────────────────────────
 function startMPGame() {
-  _mpTick = 0;
   labMode = false; mode = 'mp'; difficulty = null;
   mpGuestPaused = false; chatOpen = false; chatVisible = false; chatUnread = 0;
-  UI.chatInputBar.style.display = 'none';
+  document.getElementById('chat-input-bar').style.display = 'none';
   const mobileChat = document.getElementById('mobile-chat');
   if (mobileChat) mobileChat.textContent = '💬 CHAT';
   showOnly('game-screen');
@@ -1113,7 +1105,7 @@ function startMPGame() {
 function startMPGameAsGuest() {
   labMode = false; mode = 'mp'; difficulty = null;
   mpGuestPaused = false; chatOpen = false; chatVisible = false; chatUnread = 0;
-  UI.chatInputBar.style.display = 'none';
+  document.getElementById('chat-input-bar').style.display = 'none';
   const mobileChatG = document.getElementById('mobile-chat');
   if (mobileChatG) mobileChatG.textContent = '💬 CHAT';
   showOnly('game-screen');
@@ -1124,158 +1116,19 @@ function startMPGameAsGuest() {
   animId = requestAnimationFrame(loop);
 }
 
-// ── Snap reset — sent immediately after a score ───────────────────────────────
-function sendSnapReset() {
-  if (!mpConn || !mpConn.open) return;
-  mpConn.send({
-    t: 'snap',
-    bx: ball.x, by: ball.y, vx: velX, vy: velY,
-    pTx: paddleT.x, pBx: paddleB.x,
-    sT: scoreT, sB: scoreB,
-    cd: countdownTimer, ef: activeEffects,
-  });
-}
-
-// ── Apply snap (guest) — hard reset all state ─────────────────────────────────
-function applySnap(d) {
-  ball     = { x: d.bx, y: d.by };
-  velX = d.vx; velY = d.vy;
-  paddleT  = { x: d.pTx, y: PADDLE_MARGIN };
-  paddleB  = { x: d.pBx, y: H - PADDLE_MARGIN - PADDLE_H };
-  scoreT = d.sT; scoreB = d.sB;
-  activeEffects = d.ef; countdownTimer = d.cd;
-  obstacles = []; powerups = []; ghostBall = null;
-  ballTrail = []; ghostTrail = []; curveSpin = 0; ballSpeed = BASE_SPEED;
-}
-
-// ── Apply core packet (guest) — every frame ───────────────────────────────────
-function applyCore(d) {
-  if (!ball) { ball = { x: d.bx, y: d.by }; velX = d.vx; velY = d.vy; }
-  else {
-    const dx = d.bx - ball.x, dy = d.by - ball.y;
-    const dist2 = dx*dx + dy*dy;
-    const vFlip = (Math.sign(d.vx) !== Math.sign(velX) && Math.abs(d.vx) > 1) ||
-                  (Math.sign(d.vy) !== Math.sign(velY) && Math.abs(d.vy) > 1);
-    if (dist2 > 1600 || vFlip) { ball.x = d.bx; ball.y = d.by; velX = d.vx; velY = d.vy; }
-    else if (dist2 > 9)        { ball.x += dx*0.2; ball.y += dy*0.2; }
-  }
-  if (!paddleT) paddleT = { x: d.pTx, y: PADDLE_MARGIN };
-  else paddleT.x += (d.pTx - paddleT.x) * 0.4;
-  if (!paddleB) paddleB = { x: d.pBx, y: H - PADDLE_MARGIN - PADDLE_H };
-  else paddleB.x = d.pBx;
-  if (d.cd !== undefined) countdownTimer = d.cd;
-  ghostBall = d.gb ? { ...d.gb } : null;
-}
-
-// ── Apply full sync packet (guest) — every 6 frames ──────────────────────────
-function applyFull(d) {
-  scoreT = d.sT; scoreB = d.sB;
-  activeEffects = d.ef;
-  if (d.pu !== undefined) {
-    if (!d.pu.length) { powerups = []; }
-    else {
-      const newPUs = [];
-      for (const p of d.pu) {
-        const ex = powerups.find(e => e.type === p.type && Math.abs(e.cx-p.cx)<100 && Math.abs(e.cy-p.cy)<100);
-        if (ex) { ex.cx += (p.cx-ex.cx)*0.3; ex.cy += (p.cy-ex.cy)*0.3; ex.vx=p.vx; ex.vy=p.vy; ex.age=p.age; newPUs.push(ex); }
-        else newPUs.push({ ...p });
-      }
-      powerups = newPUs;
-    }
-  }
-  if (d.ob !== undefined) {
-    obstacles = d.ob.map((o, i) => {
-      const ex = obstacles[i];
-      if (ex && Math.abs(ex.cx-o.cx)<80 && Math.abs(ex.cy-o.cy)<80) {
-        ex.cx += (o.cx-ex.cx)*0.3; ex.cy += (o.cy-ex.cy)*0.3;
-        ex.vx=o.vx; ex.vy=o.vy; ex.angle=o.angle; ex.angVel=o.angVel; ex.age=o.age;
-        if (o.baseVerts && o.baseVerts.length) {
-          ex.baseVerts = o.baseVerts;
-          const cos=Math.cos(ex.angle), sin=Math.sin(ex.angle);
-          ex.verts = ex.baseVerts.map(v => ({ x:ex.cx+v.x*cos-v.y*sin, y:ex.cy+v.x*sin+v.y*cos }));
-        }
-        return ex;
-      }
-      const bv=o.baseVerts||[], cos=Math.cos(o.angle||0), sin=Math.sin(o.angle||0);
-      return {
-        cx:o.cx, cy:o.cy, vx:o.vx, vy:o.vy,
-        baseVerts:bv, verts:bv.map(v=>({ x:o.cx+v.x*cos-v.y*sin, y:o.cy+v.x*sin+v.y*cos })),
-        baseR:o.baseR, boundR:o.boundR||o.baseR, age:o.age,
-        trail:[], angle:o.angle||0, angVel:o.angVel||0,
-      };
-    });
-  }
-}
-
-// ── Guest local prediction ────────────────────────────────────────────────────
-function guestPredict(dt) {
-  if (!ball || !paddleB || !paddleT) return;
-  const ps=padSpeed(), pwB=getPaddleW(false); // padSpeed cached — only recalc when ballSpeed changes
-  const botRev = activeEffects.bottom.reversed > 0 ? -1 : 1;
-  if (keys['ArrowLeft']  || keys['a'] || keys['A']) paddleB.x -= botRev*ps*dt;
-  if (keys['ArrowRight'] || keys['d'] || keys['D']) paddleB.x += botRev*ps*dt;
-  paddleB.x = clamp(paddleB.x, 0, W-pwB);
-  ball.x += velX*dt; ball.y += velY*dt;
-  if (ball.x-BALL_R<0)   { ball.x=BALL_R;     velX= Math.abs(velX); }
-  if (ball.x+BALL_R>W)   { ball.x=W-BALL_R;   velX=-Math.abs(velX); }
-  ball.y = clamp(ball.y, BALL_R, H-BALL_R);
-  for (const obs of obstacles) {
-    obs.cx+=obs.vx*dt; obs.cy+=obs.vy*dt;
-    obs.angle=(obs.angle||0)+(obs.angVel||0)*dt;
-    if (obs.cx-obs.baseR<0)   { obs.cx=obs.baseR;   obs.vx= Math.abs(obs.vx); }
-    if (obs.cx+obs.baseR>W)   { obs.cx=W-obs.baseR; obs.vx=-Math.abs(obs.vx); }
-    if (obs.cy-obs.baseR<0)   { obs.cy=obs.baseR;   obs.vy= Math.abs(obs.vy); }
-    if (obs.cy+obs.baseR>H)   { obs.cy=H-obs.baseR; obs.vy=-Math.abs(obs.vy); }
-    if (obs.baseVerts && obs.baseVerts.length) {
-      const cos=Math.cos(obs.angle), sin=Math.sin(obs.angle);
-      obs.verts=obs.baseVerts.map(v=>({ x:obs.cx+v.x*cos-v.y*sin, y:obs.cy+v.x*sin+v.y*cos }));
-    }
-    if (!obs.trail) obs.trail=[];
-    updateTrail(obs.trail, obs.cx, obs.cy);
-  }
-  for (const pu of powerups) {
-    if (!pu.vx && !pu.vy) continue;
-    pu.cx+=pu.vx*dt; pu.cy+=pu.vy*dt;
-    if (pu.cx-PU_R<0)               { pu.cx=PU_R;             pu.vx= Math.abs(pu.vx); }
-    if (pu.cx+PU_R>W)               { pu.cx=W-PU_R;           pu.vx=-Math.abs(pu.vx); }
-    if (pu.cy-PU_R<PU_WALL_PAD)     { pu.cy=PU_WALL_PAD+PU_R; pu.vy= Math.abs(pu.vy); }
-    if (pu.cy+PU_R>H-PU_WALL_PAD)   { pu.cy=H-PU_WALL_PAD-PU_R; pu.vy=-Math.abs(pu.vy); }
-  }
-  if (ghostBall) {
-    ghostBall.x+=ghostBall.vx*dt; ghostBall.y+=ghostBall.vy*dt;
-    if (ghostBall.x-BALL_R<0) { ghostBall.x=BALL_R;   ghostBall.vx= Math.abs(ghostBall.vx); }
-    if (ghostBall.x+BALL_R>W) { ghostBall.x=W-BALL_R; ghostBall.vx=-Math.abs(ghostBall.vx); }
-    ghostBall.y=clamp(ghostBall.y, BALL_R, H-BALL_R);
-    ghostBall.age+=dt;
-    if (ghostBall.age>=GHOST_MAX_AGE) ghostBall=null;
-  }
-  updateTrail(ballTrail, ball.x, ball.y);
-  if (ghostBall) updateTrail(ghostTrail, ghostBall.x, ghostBall.y);
-}
-
 // ── Send state (host → guest every frame) ─────────────────────────────────────
-let _mpTick = 0;
 function sendState() {
   if (!mpConn || !mpConn.open) return;
-  _mpTick++;
-  // Every frame: compact core packet
   mpConn.send({
-    t: 'core',
-    bx: ball.x, by: ball.y, vx: velX, vy: velY,
-    pTx: paddleT.x, pBx: paddleB.x,
-    cd: countdownTimer,
-    gb: ghostBall ? { x:ghostBall.x, y:ghostBall.y, vx:ghostBall.vx, vy:ghostBall.vy, age:ghostBall.age, curveSpin:ghostBall.curveSpin, speed:ghostBall.speed } : null,
+    t: 'state',
+    b:  { x: ball.x, y: ball.y },
+    pT: { x: paddleT.x }, pB: { x: paddleB.x },
+    sT: scoreT, sB: scoreB,
+    vx: velX, vy: velY,
+    ef: activeEffects, cd: countdownTimer, gb: ghostBall,
+    pu: powerups.map(p => ({ cx:p.cx, cy:p.cy, type:p.type, age:p.age })),
+    ob: obstacles.map(o => ({ cx:o.cx, cy:o.cy, verts:o.verts, baseR:o.baseR, age:o.age, trail:o.trail })),
   });
-  // Every 6 frames: full sync
-  if (_mpTick % 6 === 0) {
-    mpConn.send({
-      t: 'full',
-      sT: scoreT, sB: scoreB,
-      ef: activeEffects,
-      pu: powerups.map(p => ({ cx:p.cx, cy:p.cy, vx:p.vx, vy:p.vy, type:p.type, age:p.age })),
-      ob: obstacles.map(o => ({ cx:o.cx, cy:o.cy, vx:o.vx, vy:o.vy, baseVerts:o.baseVerts, baseR:o.baseR, boundR:o.boundR, angle:o.angle, angVel:o.angVel, age:o.age })),
-    });
-  }
 }
 
 // ── Apply net state (guest) ────────────────────────────────────────────────────
@@ -1299,11 +1152,9 @@ function applyNetState(d) {
 // ── Send guest input (guest → host each frame) ────────────────────────────────
 function sendGuestInput() {
   if (!mpConn || !mpConn.open) return;
-  mpConn.send({
-    t: 'input',
+  mpConn.send({ t:'input',
     l: !!(keys['ArrowLeft']  || keys['a'] || keys['A']),
     r: !!(keys['ArrowRight'] || keys['d'] || keys['D']),
-    px: paddleB ? paddleB.x : null,
   });
 }
 
@@ -1359,7 +1210,7 @@ function handleDisconnect() {
     mpHostReady = false; mpGuestReady = false;
     mpGuestPaused = false;
     chatMessages = []; chatOpen = false; chatVisible = false; chatUnread = 0;
-    UI.chatInputBar.style.display = 'none';
+    document.getElementById('chat-input-bar').style.display = 'none';
     setTimeout(() => {
       overlay.style.display = 'none';
       // Restore default message text for future disconnects
@@ -1375,7 +1226,7 @@ function handleDisconnect() {
       if (mpPeer) { mpPeer.destroy(); mpPeer = null; }
       mpConn = null; mpMode = null;
       chatMessages = []; chatOpen = false; chatVisible = false; chatUnread = 0;
-      UI.chatInputBar.style.display = 'none';
+      document.getElementById('chat-input-bar').style.display = 'none';
       showOnly('mode-screen');
     }, 2500);
   }
@@ -1383,7 +1234,7 @@ function handleDisconnect() {
 
 // ── MP Chat ───────────────────────────────────────────────────────────────────
 function positionInputBar() {
-  const bar = UI.chatInputBar;
+  const bar = document.getElementById('chat-input-bar');
 
   // On the ready screen, anchor below the "Press T to chat" hint text
   const hint = document.getElementById('mp-ready-chat-hint');
@@ -1410,7 +1261,7 @@ function toggleChat() {
   // Open/close is based on chatOpen only — chatVisible may already be true from
   // an incoming message and must not block opening or accidentally trigger a close.
   chatOpen = !chatOpen;
-  const bar = UI.chatInputBar;
+  const bar = document.getElementById('chat-input-bar');
   if (chatOpen) {
     chatVisible = true;   // keep overlay on whenever input is open
     bar.style.display = 'flex';
@@ -1628,53 +1479,38 @@ function getPaddleW(isTop) {
 }
 
 // ── Screens ───────────────────────────────────────────────────────────────────
-// Cache frequently accessed UI elements — must be after all HTML is parsed
-// (this script tag is at the end of body so all elements exist here)
-const UI = {
-  labSidebar:      document.getElementById('lab-sidebar'),
-  pauseHint:       document.getElementById('pause-hint'),
-  touchControls:   document.getElementById('touch-controls'),
-  touchControlsP2: document.getElementById('touch-controls-p2'),
-  mobileBtnRow:    document.getElementById('mobile-btn-row'),
-  mobileQuit:      document.getElementById('mobile-quit'),
-  mobileChat:      document.getElementById('mobile-chat'),
-  mobilePause:     document.getElementById('mobile-pause'),
-  mobilePauseAi:   document.getElementById('mobile-pause-ai'),
-  fullscreenBtn:   document.getElementById('fullscreen-btn'),
-  mobileLabPanel:  document.getElementById('lab-mobile-panel'),
-  desktopLabBot:   document.getElementById('lab-desktop-bottom'),
-  chatInputBar:    document.getElementById('chat-input-bar'),
-  volSlider:       document.getElementById('vol-slider'),
-  acctErr:         document.getElementById('acct-err'),
-  acctUser:        document.getElementById('acct-user'),
-  acctPass:        document.getElementById('acct-pass'),
-  acctRemember:    document.getElementById('acct-remember'),
-  acctSaveStatus:  document.getElementById('acct-save-status'),
-  acctDisplayName: document.getElementById('acct-display-name'),
-  acctLoggedout:   document.getElementById('acct-loggedout'),
-  acctLoggedin:    document.getElementById('acct-loggedin'),
-};
-
 function showOnly(id) {
   currentScreen = id;
   SCREENS.forEach(s => screenEls[s].style.display = s===id ? 'flex' : 'none');
-  const inGame    = id === 'game-screen';
+  // Lab sidebar — hidden in touch mode
+  document.getElementById('lab-sidebar').classList.toggle('visible', id==='game-screen' && labMode && !touchMode);
+  document.getElementById('pause-hint').style.display = (labMode || touchMode) ? 'none' : '';
+  // Touch overlay + quit button
+  const inGame = id === 'game-screen';
   const showTouch = inGame && touchMode;
-  const inMPArea  = (id === 'game-screen' || id === 'mp-ready-screen') && mpMode;
-  UI.labSidebar.classList.toggle('visible', inGame && labMode && !touchMode);
-  UI.pauseHint.style.display      = (labMode || touchMode) ? 'none' : '';
-  UI.touchControls.style.display  = showTouch ? 'flex' : 'none';
-  UI.touchControlsP2.style.display= (showTouch && mode === '2p') ? 'flex' : 'none';
-  UI.mobileBtnRow.style.display   = inGame ? 'flex' : 'none';
-  UI.mobileQuit.style.display     = showTouch ? 'block' : 'none';
-  UI.mobileChat.style.display     = (showTouch && inMPArea) ? 'block' : 'none';
-  UI.mobilePause.style.display    = (showTouch && mpMode === 'host' && inGame) ? 'block' : 'none';
-  UI.fullscreenBtn.style.display  = inGame ? 'block' : 'none';
-  UI.mobilePauseAi.style.display  = (inGame && touchMode && mode === 'ai') ? 'block' : 'none';
-  UI.mobileLabPanel.classList.toggle('lab-visible', inGame && labMode);
-  UI.desktopLabBot.style.display  = (inGame && labMode && !touchMode) ? 'flex' : 'none';
-  if (!inMPArea) { chatOpen = false; chatVisible = false; UI.chatInputBar.style.display = 'none'; }
+  document.getElementById('touch-controls').style.display = showTouch ? 'flex' : 'none';
+  // P2 touch controls only in 2P touch mode
+  const tcP2 = document.getElementById('touch-controls-p2');
+  if (tcP2) tcP2.style.display = (showTouch && mode === '2p') ? 'flex' : 'none';
+  // Mobile button row — sits above canvas in layout flow
+  const inMPArea = (id === 'game-screen' || id === 'mp-ready-screen') && mpMode;
+  document.getElementById('mobile-btn-row').style.display  = inGame ? 'flex' : 'none';
+  document.getElementById('mobile-quit').style.display     = showTouch ? 'block' : 'none';
+  document.getElementById('mobile-chat').style.display     = (showTouch && inMPArea) ? 'block' : 'none';
+  document.getElementById('mobile-pause').style.display    = (showTouch && mpMode === 'host' && inGame) ? 'block' : 'none';
+  if (!inMPArea) { chatOpen = false; chatVisible = false; document.getElementById('chat-input-bar').style.display = 'none'; }
   if (inGame) { scaleGame(); setTimeout(scaleGame, 50); }
+  // Show fullscreen button only during gameplay on desktop
+  const fsBtn = document.getElementById('fullscreen-btn');
+  if (fsBtn) fsBtn.style.display = (id === 'game-screen') ? 'block' : 'none';
+  const pauseAiBtn = document.getElementById('mobile-pause-ai');
+  if (pauseAiBtn) pauseAiBtn.style.display = (id === 'game-screen' && touchMode && mode === 'ai') ? 'block' : 'none';
+  // Show mobile lab panel only in touch mode + lab mode
+  const mobileLabPanel = document.getElementById('lab-mobile-panel');
+  if (mobileLabPanel) mobileLabPanel.classList.toggle('lab-visible', id === 'game-screen' && labMode);
+  // Show desktop lab bottom bar when in lab mode (non-touch)
+  const desktopLabBottom = document.getElementById('lab-desktop-bottom');
+  if (desktopLabBottom) desktopLabBottom.style.display = (id === 'game-screen' && labMode && !touchMode) ? 'flex' : 'none';
 }
 const showMode       = () => { labMode = false; document.body.classList.remove('lab-active'); showOnly('mode-screen'); };
 const showDifficulty = () => showOnly('difficulty-screen');
@@ -1711,28 +1547,26 @@ function switchLabTab(tab) {
 }
 
 // Sync mobile pill states with desktop (called after labToggle updates desktop btns)
-// Pre-cache lab pill button pairs — built once, reused on every toggle
-const LAB_PILL_PAIRS = [
-  ['lbtn-top-wide','mb-top-wide'],['lbtn-top-curve','mb-top-curve'],
-  ['lbtn-top-power','mb-top-power'],['lbtn-top-split','mb-top-split'],
-  ['lbtn-top-shrink','mb-top-shrink'],['lbtn-top-reverse','mb-top-reverse'],
-  ['lbtn-bot-wide','mb-bot-wide'],['lbtn-bot-curve','mb-bot-curve'],
-  ['lbtn-bot-power','mb-bot-power'],['lbtn-bot-split','mb-bot-split'],
-  ['lbtn-bot-shrink','mb-bot-shrink'],['lbtn-bot-reverse','mb-bot-reverse'],
-].map(([d, m]) => ({
-  dBtn: document.getElementById(d),
-  mBtn: document.getElementById(m),
-})).filter(p => p.dBtn && p.mBtn);
-
 function syncMobileLabPills() {
-  for (const { dBtn, mBtn } of LAB_PILL_PAIRS) {
-    const pill  = mBtn.querySelector('.ppill');
+  const map = [
+    ['lbtn-top-wide','mb-top-wide'],['lbtn-top-curve','mb-top-curve'],
+    ['lbtn-top-power','mb-top-power'],['lbtn-top-split','mb-top-split'],
+    ['lbtn-top-shrink','mb-top-shrink'],['lbtn-top-reverse','mb-top-reverse'],
+    ['lbtn-bot-wide','mb-bot-wide'],['lbtn-bot-curve','mb-bot-curve'],
+    ['lbtn-bot-power','mb-bot-power'],['lbtn-bot-split','mb-bot-split'],
+    ['lbtn-bot-shrink','mb-bot-shrink'],['lbtn-bot-reverse','mb-bot-reverse'],
+  ];
+  map.forEach(([desk, mob]) => {
+    const dBtn = document.getElementById(desk);
+    const mBtn = document.getElementById(mob);
+    if (!dBtn || !mBtn) return;
+    const pill = mBtn.querySelector('.ppill');
     const dPill = dBtn.querySelector('.ppill');
     if (pill && dPill) {
       pill.textContent = dPill.textContent;
       mBtn.classList.toggle('on', dBtn.classList.contains('on'));
     }
-  }
+  });
 }
 
 function startLab() {
@@ -1759,7 +1593,7 @@ function backToMenu() {
   if (mpPeer) { mpPeer.destroy(); mpPeer = null; }
   mpConn = null; mpMode = null;
   chatMessages = []; chatOpen = false; chatVisible = false; chatUnread = 0;
-  UI.chatInputBar.style.display = 'none';
+  document.getElementById('chat-input-bar').style.display = 'none';
   showOnly('mode-screen');
   if (animId) { cancelAnimationFrame(animId); animId = null; }
 }
@@ -1820,7 +1654,7 @@ document.addEventListener('keydown', e => {
       e.preventDefault();
       document.activeElement.blur();
       chatOpen = false; chatVisible = false;
-      UI.chatInputBar.style.display = 'none';
+      document.getElementById('chat-input-bar').style.display = 'none';
     }
     return; // block all game keys while typing
   }
@@ -1923,6 +1757,8 @@ document.body.classList.toggle('touch-mode', touchMode);
 scaleGame();
 setTimeout(scaleGame, 100); // re-run after layout settles
 
+
+
 // Touch controls
 const tcLeft  = document.getElementById('touch-left');
 const tcRight = document.getElementById('touch-right');
@@ -1964,8 +1800,8 @@ function loop(ts) {
   const dt = Math.min((ts - lastTime) / 16.67, 2);
   lastTime = ts;
   if (mpMode === 'guest') {
+    // Guest: send input, render received state — no simulation
     sendGuestInput();
-    if (!mpGuestPaused && gameState === 'playing') guestPredict(dt);
     draw();
   } else {
     if (!paused && gameState==='playing') update(dt);
@@ -2113,6 +1949,7 @@ function update(dt) {
   });
 
   // Tick all effect timers (skip in lab mode — applyLabToggles holds them at 9999)
+  const EFFECT_KEYS = ['wide','curve','power','split','shrunk','reversed'];
   if (!labMode) {
     for (const side of ['top','bottom']) {
       const ef = activeEffects[side];
@@ -2131,14 +1968,12 @@ function update(dt) {
     scoreB++; sfx.score(); if (settings.visuals.screenShake) shakeAmt = 8;
     if (scoreB>=WINNING_SCORE) { endGame(); return; }
     resetRound(1);
-    if (mpMode === 'host') sendSnapReset();
   }
   if (ball.y > H+BALL_R*2) {
     if (labMode) { resetRound(-1); return; }
     scoreT++; sfx.score(); if (settings.visuals.screenShake) shakeAmt = 8;
     if (scoreT>=WINNING_SCORE) { endGame(); return; }
     resetRound(-1);
-    if (mpMode === 'host') sendSnapReset();
   }
 }
 
@@ -2367,14 +2202,25 @@ function hitPaddle(paddle, side, velDir) {
 
 // ── AI ────────────────────────────────────────────────────────────────────────
 // Predict where the ball will cross the AI paddle's Y line, bouncing off walls
+function predictBallX() {
+  // Simulate ball path to paddleB Y, accounting for wall bounces
+  let bx = ball.x, by = ball.y, bvx = velX, bvy = velY;
+  const targetY = paddleB.y;
+  if (bvy <= 0) return ball.x;
+  for (let i = 0; i < 600; i++) {
+    bx += bvx;
+    by += bvy;
+    if (bx - BALL_R < 0)    { bx = BALL_R;     bvx =  Math.abs(bvx); }
+    if (bx + BALL_R > W)    { bx = W - BALL_R; bvx = -Math.abs(bvx); }
+    if (by >= targetY) break;
+  }
+  return bx;
+}
 
 function aiMove(dt, ps) {
   const cfg    = DIFF[difficulty];
   const pw     = getPaddleW(false);
   const center = paddleB.x + pw / 2;
-  const isEasy = isEasy;
-  const isMed  = isMed;
-  const isHard = isHard;
 
   // ── REVERSE power-up confusion ────────────────────────────────────────────
   // aiReverseDelay > 0  = still in hesitation window (going wrong way)
@@ -2384,8 +2230,8 @@ function aiMove(dt, ps) {
   if (reversed) {
     if (aiReverseDelay === 0 && !aiReverseConfused) {
       // Just got reversed for the first time — start hesitation
-      const hesitation = isEasy   ? 55
-                       : isMed  ? 28
+      const hesitation = difficulty === 'easy'   ? 55
+                       : difficulty === 'medium'  ? 28
                        : 10;
       aiReverseDelay    = hesitation;
       aiReverseConfused = true;
@@ -2395,7 +2241,7 @@ function aiMove(dt, ps) {
       if (aiReverseDelay <= 0) {
         // Hesitation done — hard fully adapts, easy/medium stay confused
         aiReverseDelay = -1; // sentinel: hesitation served
-        if (isHard) aiReverseConfused = false;
+        if (difficulty === 'hard') aiReverseConfused = false;
       }
     }
     // aiReverseDelay === -1: hesitation already served, state locked in
@@ -2403,8 +2249,8 @@ function aiMove(dt, ps) {
     // Reverse just wore off or has been off
     if (aiReverseConfused || aiReverseDelay !== 0) {
       // Was reversed — start recovery hesitation (AI still thinks it's reversed briefly)
-      const recovery = isEasy   ? 55
-                     : isMed  ? 28
+      const recovery = difficulty === 'easy'   ? 55
+                     : difficulty === 'medium'  ? 28
                      : 10;
       aiReverseRecovery = recovery;
       aiReverseDelay    = 0;
@@ -2422,12 +2268,12 @@ function aiMove(dt, ps) {
   if (ghostBall) {
     if (--aiGhostCheckTimer <= 0) {
       // Re-evaluate: should we chase ghost or real ball?
-      const foolChance = isEasy   ? 0.65
-                       : isMed  ? 0.22
+      const foolChance = difficulty === 'easy'   ? 0.65
+                       : difficulty === 'medium'  ? 0.22
                        : 0.04; // hard: very rarely fooled
       aiGhostLocked    = Math.random() < foolChance;
-      aiGhostCheckTimer = isEasy   ? 25
-                        : isMed  ? 15
+      aiGhostCheckTimer = difficulty === 'easy'   ? 25
+                        : difficulty === 'medium'  ? 15
                         : 12;
     }
     if (aiGhostLocked) targetX = ghostBall.x; // chasing the fake
@@ -2442,8 +2288,8 @@ function aiMove(dt, ps) {
   // They track current ball X which already includes curve drift, but we add
   // an extra offset in the wrong direction to simulate misreading the curve
   if (Math.abs(curveSpin) > 0.01 && velY > 0) {
-    const curveOffset = isEasy   ? -curveSpin * 18
-                      : isMed  ? -curveSpin * 8
+    const curveOffset = difficulty === 'easy'   ? -curveSpin * 18
+                      : difficulty === 'medium'  ? -curveSpin * 8
                       : 0; // hard reads curve perfectly
     targetX += curveOffset;
   }
@@ -2458,7 +2304,7 @@ function aiMove(dt, ps) {
   // Speed reduced slightly when confused by power-ups (hesitation effect)
   const confused  = aiReverseConfused || aiReverseRecovery > 0 || aiGhostLocked;
   const speedMult = confused
-    ? (isEasy ? cfg.speedMult * 0.7 : cfg.speedMult * 0.88)
+    ? (difficulty === 'easy' ? cfg.speedMult * 0.7 : cfg.speedMult * 0.88)
     : cfg.speedMult;
   const as = ps * speedMult;
 
@@ -2486,7 +2332,7 @@ function draw() {
   cx.setLineDash([]);
 
   // Scores (hidden in lab mode — show LAB label instead)
-  cx.textAlign='center'; cx.textBaseline='middle'; // set once — only changed where needed
+  cx.textAlign='center'; cx.textBaseline='middle';
   if (labMode) {
     cx.font='0.55rem Courier New'; cx.fillStyle='#1e1e1e';
     cx.fillText('POWER-UP LAB', W/2, H/2 - 10);
@@ -2514,7 +2360,7 @@ function draw() {
     cx.textAlign='right'; cx.font='0.5rem Courier New';
     cx.globalAlpha=0.22; cx.fillStyle=DIFF_COLOR[difficulty];
     cx.fillText(difficulty.toUpperCase(), W-10, H-10);
-    cx.globalAlpha=1;
+    cx.globalAlpha=1; cx.textAlign='center';
   }
 
   for (const obs of obstacles) drawObstacle(obs);
@@ -2914,15 +2760,10 @@ async function acctAPI(action, payload = {}) {
 }
 
 // ── Overlay open/close ────────────────────────────────────────────────────────
-let _overlayRect = null;
-window.addEventListener('resize', () => { _overlayRect = null; }); // invalidate on resize
-
 function positionOverCanvas(el) {
-  if (!_overlayRect) {
-    const s = screenEls[currentScreen] || document.body;
-    _overlayRect = s.getBoundingClientRect();
-  }
-  const ref = _overlayRect;
+  const s = screenEls[currentScreen] || document.body;
+  let ref = s.getBoundingClientRect();
+  if (!ref) ref = document.body.getBoundingClientRect();
   el.style.left   = ref.left + 'px';
   el.style.top    = ref.top  + window.scrollY + 'px';
   el.style.width  = ref.width  + 'px';
@@ -2930,10 +2771,10 @@ function positionOverCanvas(el) {
 }
 
 function openAcctOverlay() {
-  UI.acctErr.textContent = '';
-  UI.acctUser.value = '';
-  UI.acctPass.value = '';
-  UI.acctSaveStatus.textContent = '';
+  document.getElementById('acct-err').textContent = '';
+  document.getElementById('acct-user').value = '';
+  document.getElementById('acct-pass').value = '';
+  document.getElementById('acct-save-status').textContent = '';
   refreshAcctView();
   const el = document.getElementById('acct-overlay');
   positionOverCanvas(el);
@@ -2958,11 +2799,11 @@ function closeStatsOverlay() {
 }
 
 function refreshAcctView() {
-  const out = UI.acctLoggedout;
-  const inn = UI.acctLoggedin;
+  const out = document.getElementById('acct-loggedout');
+  const inn = document.getElementById('acct-loggedin');
   if (acctUser) {
     out.style.display = 'none'; inn.style.display = '';
-    UI.acctDisplayName.textContent = acctUser.username;
+    document.getElementById('acct-display-name').textContent = acctUser.username;
   } else {
     out.style.display = ''; inn.style.display = 'none';
   }
@@ -2975,10 +2816,10 @@ function updateLoginModeBtn() {
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 async function acctLogin() {
-  const username = UI.acctUser.value.trim();
-  const password = UI.acctPass.value;
-  if (!username || !password) { UI.acctErr.textContent = 'Enter username and password.'; return; }
-  UI.acctErr.textContent = 'Logging in…';
+  const username = document.getElementById('acct-user').value.trim();
+  const password = document.getElementById('acct-pass').value;
+  if (!username || !password) { document.getElementById('acct-err').textContent = 'Enter username and password.'; return; }
+  document.getElementById('acct-err').textContent = 'Logging in…';
   const hash = await sha256(password);
   const res = await acctAPI('login', { username, passwordHash: hash });
   if (res.ok) {
@@ -2987,27 +2828,27 @@ async function acctLogin() {
     refreshAcctView();
     updateLoginModeBtn();
     updateRdyIdentity();
-    UI.acctErr.textContent = '';
-    UI.acctSaveStatus.textContent = 'Logged in ✓';
+    document.getElementById('acct-err').textContent = '';
+    document.getElementById('acct-save-status').textContent = 'Logged in ✓';
     // Save to cookie if remember me is checked (30 day expiry)
-    const remember = UI.acctRemember;
+    const remember = document.getElementById('acct-remember');
     if (remember && remember.checked) {
       setCookie('cpong_user', username);
       setCookie('cpong_token', hash);
     }
   } else {
-    UI.acctErr.textContent = res.error || 'Login failed.';
+    document.getElementById('acct-err').textContent = res.error || 'Login failed.';
   }
 }
 
 // ── Create account ────────────────────────────────────────────────────────────
 async function acctCreate() {
-  const username = UI.acctUser.value.trim();
-  const password = UI.acctPass.value;
-  if (!username || !password) { UI.acctErr.textContent = 'Enter username and password.'; return; }
-  if (username.length < 3)   { UI.acctErr.textContent = 'Username must be 3+ characters.'; return; }
+  const username = document.getElementById('acct-user').value.trim();
+  const password = document.getElementById('acct-pass').value;
+  if (!username || !password) { document.getElementById('acct-err').textContent = 'Enter username and password.'; return; }
+  if (username.length < 3)   { document.getElementById('acct-err').textContent = 'Username must be 3+ characters.'; return; }
 
-  UI.acctErr.textContent = 'Creating account…';
+  document.getElementById('acct-err').textContent = 'Creating account…';
   const hash = await sha256(password);
   const res = await acctAPI('createAccount', { username, passwordHash: hash, settings: gatherSettings() });
   if (res.ok) {
@@ -3015,10 +2856,10 @@ async function acctCreate() {
     refreshAcctView();
     updateLoginModeBtn();
     updateRdyIdentity();
-    UI.acctErr.textContent = '';
-    UI.acctSaveStatus.textContent = 'Account created ✓';
+    document.getElementById('acct-err').textContent = '';
+    document.getElementById('acct-save-status').textContent = 'Account created ✓';
   } else {
-    UI.acctErr.textContent = res.error || 'Could not create account.';
+    document.getElementById('acct-err').textContent = res.error || 'Could not create account.';
   }
 }
 
@@ -3047,7 +2888,7 @@ function applyLoadedSettings(s) {
   // Use _orig functions to bypass auto-save triggers during load
   if (s.volume !== undefined) {
     volume = parseFloat(s.volume);
-    const slider = UI.volSlider;
+    const slider = document.getElementById('vol-slider');
     if (slider) slider.value = volume;
   }
   if (s.winScore && _origSetWinScore) _origSetWinScore(s.winScore);
@@ -3082,7 +2923,7 @@ function autoSaveSettings() {
       passwordHash: acctUser.token,
       settings: gatherSettings(),
     });
-    const el = UI.acctSaveStatus;
+    const el = document.getElementById('acct-save-status');
     if (el) { el.textContent = res.ok ? 'Saved ✓' : 'Save failed'; }
   }, 800);
 }
@@ -3098,7 +2939,7 @@ setWinScore = function(n) {
   _origSetWinScore(n);
   autoSaveSettings();
 };
-UI.volSlider.addEventListener('change', () => autoSaveSettings());
+document.getElementById('vol-slider').addEventListener('change', () => autoSaveSettings());
 
 // ── MP Ready screen identity ──────────────────────────────────────────────────
 function updateRdyIdentity() {
@@ -3208,6 +3049,8 @@ async function loadAndShowStats() {
 // ── MP identity handshake (guest sends username+token to host after connect) ──
 let mpGuestUsername = null;
 let mpGuestToken    = null;
+
+
 
 function endGame() {
   gameState = 'over';
