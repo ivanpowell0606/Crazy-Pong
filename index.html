@@ -2471,8 +2471,13 @@ function aiMove(dt, ps) {
     : cfg.speedMult;
   const as = ps * speedMult;
 
-  if (targetX < center - 2)      paddleB.x -= as * dt;
-  else if (targetX > center + 2) paddleB.x += as * dt;
+  // Smooth movement toward target — proportional to distance, capped at max speed.
+  // This eliminates the jitter that a hard step+deadzone approach causes when the
+  // ball's X shifts by tiny amounts every frame near the deadzone boundary.
+  const dist    = targetX - center;
+  const maxMove = as * dt;
+  const move    = Math.sign(dist) * Math.min(Math.abs(dist) * 0.35, maxMove);
+  paddleB.x    += move;
 
   paddleB.x = clamp(paddleB.x, 0, W - pw);
 }
