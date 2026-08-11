@@ -12,6 +12,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Crazy Pong</title>
+  <meta name="description" content="Crazy Pong — the classic Pong arcade game with a twist. Featuring power-ups, obstacles, and online multiplayer, free to play in your browser.">
   <style>
     :root { color-scheme: light; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -3136,6 +3137,10 @@ async function rdyLogin() {
     applyLoadedSettings(res.settings);
     updateRdyIdentity();
     updateLoginModeBtn();
+    refreshAcctView();
+    // Persist login the same way the main LOGIN form does
+    setCookie('cpong_user', username);
+    setCookie('cpong_token', hash);
   } else {
     document.getElementById('rdy-id-status').textContent = res.error || 'Login failed.';
   }
