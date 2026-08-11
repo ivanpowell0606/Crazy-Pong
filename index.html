@@ -17,6 +17,7 @@
     :root { color-scheme: light; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; }
+
     html { font-size: clamp(15px, 1.6vw, 19px); } /* scales with viewport width */
     body {
       background: #0a0a0a;
@@ -121,7 +122,7 @@
       display: none; flex-direction: column; gap: 6px;
       width: 100%; padding: 8px 0 4px;
     }
-    body.touch-mode #lab-mobile-panel.lab-visible { display: flex; }
+    #lab-mobile-panel.lab-visible { display: flex; }
     #lab-mobile-tabs { display: flex; gap: 5px; width: 100%; }
     .lab-tab-btn {
       flex: 1; padding: 6px 0; border: 1px solid #333; background: transparent;
@@ -155,8 +156,8 @@
     #lab-entry-btn:hover { border-color: #aaa; color: #ccc; background: rgba(255,255,255,0.04); }
 
     /* Game layout — normal and lab side-by-side */
-    #game-layout { display: flex; gap: 24px; align-items: flex-start; }
-    #canvas-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+    #game-layout { display: flex; gap: 24px; align-items: flex-start; max-width: 100vw; }
+    #canvas-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; max-width: 100vw; overflow-x: hidden; }
 
     /* Lab sidebar */
     #lab-sidebar {
@@ -278,12 +279,13 @@
     /* Mobile button row — lives above the canvas in the normal layout flow */
     #mobile-btn-row {
       display: none; flex-direction: row; align-items: center;
-      width: 100%; padding: 0 0 4px; gap: 8px;
+      width: 100%; max-width: 100%; padding: 0 0 4px; gap: 6px;
     }
-    #mobile-chat, #mobile-pause, #mobile-pause-ai, #mobile-quit {
+    #mobile-chat, #mobile-pause, #mobile-pause-ai, #mobile-quit, #fullscreen-btn {
       display: none; background: transparent; border: 1px solid #333;
-      color: #555; font-family: 'Courier New', monospace; font-size: 0.65rem;
-      letter-spacing: 0.08rem; padding: 6px 10px; cursor: pointer; border-radius: 3px;
+      color: #555; font-family: 'Courier New', monospace; font-size: clamp(0.5rem, 2.6vw, 0.65rem);
+      letter-spacing: 0.04rem; padding: 6px 8px; cursor: pointer; border-radius: 3px;
+      flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     #mobile-quit { margin-left: auto; }
     /* MP Ready screen */
@@ -508,7 +510,7 @@
   <div id="game-layout" style="flex-wrap:wrap">
     <div id="canvas-wrap">
       <div id="mobile-btn-row">
-        <button id="fullscreen-btn" onclick="toggleFullscreen()" style="display:none;padding:4px 10px;border:1px solid #333;background:transparent;color:#444;font-family:'Courier New',monospace;font-size:0.55rem;letter-spacing:0.1rem;cursor:pointer;border-radius:2px;transition:color 0.12s,border-color 0.12s" onmouseover="this.style.color='#aaa';this.style.borderColor='#888'" onmouseout="this.style.color='#444';this.style.borderColor='#333'">⛶ FULL</button>
+        <button id="fullscreen-btn" onclick="toggleFullscreen()" onmouseover="this.style.color='#aaa';this.style.borderColor='#888'" onmouseout="this.style.color='#444';this.style.borderColor='#333'">⛶ FULL</button>
         <button id="mobile-pause-ai" onclick="if(!mpMode)paused=!paused">⏸ PAUSE</button>
         <button id="mobile-chat"  onclick="toggleChat()">💬 CHAT</button>
         <button id="mobile-pause" onclick="if(mpMode==='host')toggleMPPause()">⏸ PAUSE</button>
@@ -894,9 +896,9 @@ const PU_NAMES  = { wide:'WIDE', curve:'CURVE', power:'POWER', split:'SPLIT', sh
 
 // ── AI difficulty ─────────────────────────────────────────────────────────────
 const DIFF = {
-  easy:   { speedMult: 0.55 },
-  medium: { speedMult: 0.75 },
-  hard:   { speedMult: 0.97 },
+  easy:   { speedMult: 0.58 },
+  medium: { speedMult: 0.81 },
+  hard:   { speedMult: 0.99 },
 };
 const DIFF_COLOR = { easy: '#4caf50', medium: '#ffb300', hard: '#f44336' };
 
@@ -1193,7 +1195,7 @@ function applySnap(d) {
   scoreT = d.sT; scoreB = d.sB;
   activeEffects = d.ef; countdownTimer = d.cd;
   obstacles = []; powerups = []; ghostBall = null;
-  ballTrail = []; ghostTrail = []; curveSpin = 0; ballSpeed = BASE_SPEED;
+  ballTrail = []; ghostTrail = []; curveSpin = 0; curveDecayRate = 0.993; ballSpeed = BASE_SPEED;
 }
 
 function applyCore(d) {
@@ -1591,7 +1593,7 @@ function labResetAll() {
   for (const side of ['top','bot'])
     for (const key of Object.keys(labToggled[side]))
       if (labToggled[side][key]) labToggle(side, key);
-  curveSpin = 0; ghostBall = null;
+  curveSpin = 0; curveDecayRate = 0.993; ghostBall = null;
 }
 function labForceObstacle() {
   const obs = spawnObstacle();
@@ -1614,6 +1616,7 @@ let powerups     = [];
 let puSpawnTimer = 0;
 let lastHitter   = 'bottom';
 let curveSpin    = 0;
+let curveDecayRate = 0.993; // baseline decay — dramatic bursts steepen this temporarily
 let normalSpeed  = BASE_SPEED;
 let ghostBall    = null;   // { x, y, vx, vy, age }
 
@@ -1643,35 +1646,35 @@ function getPaddleW(isTop) {
 function showOnly(id) {
   currentScreen = id;
   SCREENS.forEach(s => screenEls[s].style.display = s===id ? 'flex' : 'none');
-  // Lab sidebar — hidden in touch mode
-  document.getElementById('lab-sidebar').classList.toggle('visible', id==='game-screen' && labMode && !touchMode);
-  document.getElementById('pause-hint').style.display = (labMode || touchMode) ? 'none' : '';
-  // Touch overlay + quit button
-  const inGame = id === 'game-screen';
+  const inGame    = id === 'game-screen';
   const showTouch = inGame && touchMode;
+  const inMPArea  = (id === 'game-screen' || id === 'mp-ready-screen') && mpMode;
+
+  // Set every lab-layout-affecting element BEFORE calling scaleGame() below,
+  // so it can measure their real rendered height on the very first call —
+  // otherwise scaleGame() sizes the canvas against stale/hidden panel state.
+  document.getElementById('lab-sidebar').classList.toggle('visible', inGame && labMode && !isNarrowForLab());
+  const mobileLabPanel = document.getElementById('lab-mobile-panel');
+  if (mobileLabPanel) mobileLabPanel.classList.toggle('lab-visible', inGame && labMode && isNarrowForLab());
+  const desktopLabBottom = document.getElementById('lab-desktop-bottom');
+  if (desktopLabBottom) desktopLabBottom.style.display = (inGame && labMode && !isNarrowForLab()) ? 'flex' : 'none';
+  document.getElementById('mobile-btn-row').style.display = inGame ? 'flex' : 'none';
   document.getElementById('touch-controls').style.display = showTouch ? 'flex' : 'none';
-  // P2 touch controls only in 2P touch mode
   const tcP2 = document.getElementById('touch-controls-p2');
   if (tcP2) tcP2.style.display = (showTouch && mode === '2p') ? 'flex' : 'none';
-  // Mobile button row — sits above canvas in layout flow
-  const inMPArea = (id === 'game-screen' || id === 'mp-ready-screen') && mpMode;
-  document.getElementById('mobile-btn-row').style.display  = inGame ? 'flex' : 'none';
+
+  document.getElementById('pause-hint').style.display = (labMode || touchMode) ? 'none' : '';
   document.getElementById('mobile-quit').style.display     = showTouch ? 'block' : 'none';
   document.getElementById('mobile-chat').style.display     = (showTouch && inMPArea) ? 'block' : 'none';
   document.getElementById('mobile-pause').style.display    = (showTouch && mpMode === 'host' && inGame) ? 'block' : 'none';
-  if (!inMPArea) { chatOpen = false; chatVisible = false; document.getElementById('chat-input-bar').style.display = 'none'; }
-  if (inGame) { scaleGame(); setTimeout(scaleGame, 50); }
-  // Show fullscreen button only during gameplay on desktop
   const fsBtn = document.getElementById('fullscreen-btn');
-  if (fsBtn) fsBtn.style.display = (id === 'game-screen') ? 'block' : 'none';
+  if (fsBtn) fsBtn.style.display = inGame ? 'block' : 'none';
   const pauseAiBtn = document.getElementById('mobile-pause-ai');
-  if (pauseAiBtn) pauseAiBtn.style.display = (id === 'game-screen' && touchMode && mode === 'ai') ? 'block' : 'none';
-  // Show mobile lab panel only in touch mode + lab mode
-  const mobileLabPanel = document.getElementById('lab-mobile-panel');
-  if (mobileLabPanel) mobileLabPanel.classList.toggle('lab-visible', id === 'game-screen' && labMode);
-  // Show desktop lab bottom bar when in lab mode (non-touch)
-  const desktopLabBottom = document.getElementById('lab-desktop-bottom');
-  if (desktopLabBottom) desktopLabBottom.style.display = (id === 'game-screen' && labMode && !touchMode) ? 'flex' : 'none';
+  if (pauseAiBtn) pauseAiBtn.style.display = (inGame && touchMode && mode === 'ai') ? 'block' : 'none';
+  if (!inMPArea) { chatOpen = false; chatVisible = false; document.getElementById('chat-input-bar').style.display = 'none'; }
+
+  // Now that all panel visibility is finalized, size the canvas against it
+  if (inGame) { scaleGame(); setTimeout(scaleGame, 50); }
 }
 const showMode       = () => { labMode = false; document.body.classList.remove('lab-active'); showOnly('mode-screen'); };
 const showDifficulty = () => showOnly('difficulty-screen');
@@ -1793,7 +1796,7 @@ function cancelQuit() {
 function resetRound(dir) {
   ballSpeed = BASE_SPEED; hitCount = 0; obstacles = [];
   aiReverseDelay = 0; aiReverseConfused = false; aiReverseRecovery = 0; aiGhostLocked = false; aiGhostCheckTimer = 0;
-  powerups = []; puSpawnTimer = 0; curveSpin = 0; lastHitter = 'bottom';
+  powerups = []; puSpawnTimer = 0; curveSpin = 0; curveDecayRate = 0.993; lastHitter = 'bottom';
   normalSpeed = BASE_SPEED; ghostBall = null; countdownTimer = labMode ? 0 : 90;
   ballTrail = []; ghostTrail = []; particles = []; shakeAmt = 0;
   activeEffects = freshEffects();
@@ -1850,6 +1853,12 @@ let currentScreen = 'mode-screen';
 // false = keyboard mode (full desktop layout)
 let touchMode = ('ontouchstart' in window) && window.innerWidth < 800;
 
+// The lab's sidebar+canvas side-by-side layout needs real estate — below this
+// width it doesn't fit even on a non-touch desktop browser, so it falls back
+// to the same compact tabbed panel used on touch devices.
+const LAB_NARROW_BREAKPOINT = 820;
+const isNarrowForLab = () => touchMode || window.innerWidth <= LAB_NARROW_BREAKPOINT;
+
 function setTouchMode(val) {
   if (touchMode === val) return;
   touchMode = val;
@@ -1890,16 +1899,31 @@ function scaleGame() {
   const tcEl = document.getElementById('touch-controls');
   const tcH  = (touchMode && tcEl) ? (tcEl.offsetHeight || 100) + 16 : 0;
 
+  // Which lab layout (if any) is actually visible — mirrors the logic in showOnly()
+  const showingMobileLabPanel = labMode && isNarrowForLab();
+  const showingDesktopSidebar = labMode && !isNarrowForLab();
+  const mobileLabEl = document.getElementById('lab-mobile-panel');
+  const mobileLabH  = showingMobileLabPanel && mobileLabEl ? (mobileLabEl.offsetHeight || 0) + 8 : 0;
+
   if (touchMode && window.innerWidth < 768) {
-    // Genuine mobile: scale to fit screen width, leave room for touch controls
-    const mobileW = Math.min(window.innerWidth - 16, canvasNativeW);
+    // Genuine mobile — shrink to fit width AND height together (including the lab
+    // panel's own height when it's showing) so everything sits on screen with no scroll.
+    const mobileW  = Math.min(window.innerWidth - 12, canvasNativeW);
     const scaleByW = mobileW / canvasNativeW;
-    const scaleByH = (window.innerHeight - 120 - tcH) / canvasNativeH;
+    const scaleByH = (window.innerHeight - 120 - tcH - mobileLabH) / canvasNativeH;
     s = Math.min(scaleByW, scaleByH);
+  } else if (showingMobileLabPanel) {
+    // Narrow non-touch window showing the compact tabbed lab panel below the canvas —
+    // shrink to fit width AND height (including the panel's height) with no scrolling.
+    const availW = window.innerWidth - 24;
+    const availH = window.innerHeight - 120 - tcH - mobileLabH;
+    const scaleByW = availW / canvasNativeW;
+    const scaleByH = availH / canvasNativeH;
+    s = Math.min(scaleByW, scaleByH, 1);
   } else {
-    // Desktop or touchscreen laptop: account for sidebar, lab bar, and touch controls if visible
-    const sidebarW  = labMode && !touchMode ? 244 : 0;
-    const labBottom = labMode && !touchMode
+    // Desktop: account for sidebar, lab bottom bar, and touch controls if visible
+    const sidebarW  = showingDesktopSidebar ? 244 : 0;
+    const labBottom = showingDesktopSidebar
       ? (document.getElementById('lab-desktop-bottom').offsetHeight || 120) + 16
       : 0;
     const availW = window.innerWidth  - sidebarW - 48;
@@ -1912,13 +1936,17 @@ function scaleGame() {
   canvas.style.width  = Math.round(canvasNativeW * s) + 'px';
   canvas.style.height = Math.round(canvasNativeH * s) + 'px';
 }
-window.addEventListener('resize', () => { scaleGame(); if (chatOpen) positionInputBar(); });
+window.addEventListener('resize', () => {
+  scaleGame();
+  if (chatOpen) positionInputBar();
+  // Re-evaluate lab layout (sidebar vs compact panel) if currently in lab mode,
+  // so resizing the browser window updates it without needing to navigate away.
+  if (labMode && currentScreen === 'game-screen') showOnly('game-screen');
+});
 // Apply initial state
 document.body.classList.toggle('touch-mode', touchMode);
 scaleGame();
 setTimeout(scaleGame, 100); // re-run after layout settles
-
-
 
 // Touch controls
 const tcLeft  = document.getElementById('touch-left');
@@ -2014,15 +2042,27 @@ function update(dt) {
   // Countdown — hold ball until timer expires
   if (countdownTimer > 0) { countdownTimer -= dt; return; }
 
-  // Ball movement
-  ball.x += velX*dt;
-  ball.y += velY*dt;
-  if (ball.x-BALL_R <= 0) { ball.x = BALL_R;   velX =  Math.abs(velX); sfx.wall(); }
-  if (ball.x+BALL_R >= W) { ball.x = W-BALL_R; velX = -Math.abs(velX); sfx.wall(); }
+  // Advance obstacles first so ball collision checks use their current-frame position
+  for (const obs of obstacles) stepObstacle(obs);
+
+  // Ball movement — substepped to prevent tunneling through obstacles/walls at high speed.
+  // Without this, a fast-moving ball can jump clean over a thin obstacle edge in one frame.
+  const moveDist  = Math.sqrt((velX*dt)*(velX*dt) + (velY*dt)*(velY*dt));
+  const subSteps  = Math.max(1, Math.ceil(moveDist / (BALL_R * 0.8)));
+  const subDt     = dt / subSteps;
+  for (let s = 0; s < subSteps; s++) {
+    ball.x += velX * subDt;
+    ball.y += velY * subDt;
+    if (ball.x-BALL_R <= 0) { ball.x = BALL_R;   velX =  Math.abs(velX); sfx.wall(); handleWallCurveBounce(); }
+    if (ball.x+BALL_R >= W) { ball.x = W-BALL_R; velX = -Math.abs(velX); sfx.wall(); handleWallCurveBounce(); }
+    for (const obs of obstacles) {
+      if (ballHitsObstacle(obs)) { sfx.obstacle(); if (settings.visuals.screenShake) shakeAmt = Math.max(shakeAmt, 5); }
+    }
+  }
 
   // Curve spin — pure direction change, speed preserved
   if (curveSpin !== 0) {
-    const decay = Math.pow(0.993, dt);
+    const decay = Math.pow(curveDecayRate, dt);
     velX += curveSpin * dt;
     const spd = Math.sqrt(velX*velX + velY*velY);
     if (spd > 0) { velX = velX/spd * ballSpeed; velY = velY/spd * ballSpeed; }
@@ -2034,18 +2074,16 @@ function update(dt) {
     }
     curveSpin *= decay;
     if (Math.abs(curveSpin) < 0.004) curveSpin = 0;
+    // Blend the decay rate itself back toward baseline — a dramatic burst starts
+    // steep (fast decay) and smoothly eases back to the normal gentle decay rate
+    // over the following frames, rather than snapping between the two speeds.
+    curveDecayRate += (0.993 - curveDecayRate) * 0.05 * dt;
     // Reuse decay for ghost ball if active
     if (ghostBall && ghostBall.curveSpin) ghostBall.curveSpin *= decay;
   }
 
   if (hitPaddle(paddleT,'top',-1))    sfx.paddle(ballSpeed);
   if (hitPaddle(paddleB,'bottom',1)) sfx.paddle(ballSpeed);
-
-  // Obstacles
-  for (const obs of obstacles) {
-    stepObstacle(obs);
-    if (ballHitsObstacle(obs)) { sfx.obstacle(); if (settings.visuals.screenShake) shakeAmt = Math.max(shakeAmt, 5); }
-  }
 
   // Ball trail
   updateTrail(ballTrail, ball.x, ball.y);
@@ -2338,6 +2376,26 @@ function registerHit() {
   }
 }
 
+// ── Wall-bounce curve handling ────────────────────────────────────────────────
+// Called whenever the ball hits a side wall while a curve is active.
+function handleWallCurveBounce() {
+  if (!curveSpin) return;
+  // Which half of the court is "the opponent's side" depends on who last hit the ball
+  const inOpponentHalf = lastHitter === 'top' ? (ball.y > H/2) : (ball.y < H/2);
+  if (inOpponentHalf && Math.random() < 0.30) {
+    // Dramatic burst — strong curve in the flipped direction near the goal,
+    // with a steep decay rate that quickly eases back to normal (see update()).
+    curveSpin = -Math.sign(curveSpin) * PU_CURVE_FORCE;
+    curveDecayRate = 0.94;
+  } else {
+    // Normal flip — refresh strength a bit so a mostly-decayed curve doesn't
+    // look like it "stopped" right when it should be bending the other way.
+    curveSpin = -curveSpin;
+    const minRefresh = PU_CURVE_FORCE * 0.4;
+    if (Math.abs(curveSpin) < minRefresh) curveSpin = Math.sign(curveSpin) * minRefresh;
+  }
+}
+
 // ── Paddle collisions ─────────────────────────────────────────────────────────
 function hitPaddle(paddle, side, velDir) {
   const isTop = side === 'top';
@@ -2356,7 +2414,14 @@ function hitPaddle(paddle, side, velDir) {
     velY  = isTop ? Math.abs(spd) : -Math.abs(spd);
     velX  = ballSpeed * Math.sin(rel*1.1);
     ball.y = isTop ? paddle.y + PADDLE_H + BALL_R : paddle.y - BALL_R;
-    curveSpin = eff.curve > 0 ? rel * PU_CURVE_FORCE * (eff.power > 0 ? 1.65 : 1.0) : 0;
+    // Curve force uses its own value separate from rel — near-center hits still
+    // get a noticeable curve in a random direction instead of curving almost none
+    let curveRel = rel;
+    if (Math.abs(curveRel) < 0.25) {
+      const sign = Math.random() < 0.5 ? -1 : 1;
+      curveRel = sign * (0.25 + Math.random() * 0.15);
+    }
+    curveSpin = eff.curve > 0 ? curveRel * PU_CURVE_FORCE * (eff.power > 0 ? 1.65 : 1.0) : 0;
     if (eff.split > 0 && !ghostBall) spawnGhostBall();
     registerHit(); return true;
   }
@@ -2474,9 +2539,12 @@ function aiMove(dt, ps) {
   // Smooth movement toward target — proportional to distance, capped at max speed.
   // This eliminates the jitter that a hard step+deadzone approach causes when the
   // ball's X shifts by tiny amounts every frame near the deadzone boundary.
+  // Hard uses a much higher ease factor so it reacts instantly to sudden direction
+  // changes (like wall bounces) instead of ramping up — easy/medium keep the ramp.
+  const easeFactor = difficulty === 'hard' ? 0.9 : 0.35;
   const dist    = targetX - center;
   const maxMove = as * dt;
-  const move    = Math.sign(dist) * Math.min(Math.abs(dist) * 0.35, maxMove);
+  const move    = Math.sign(dist) * Math.min(Math.abs(dist) * easeFactor, maxMove);
   paddleB.x    += move;
 
   paddleB.x = clamp(paddleB.x, 0, W - pw);
@@ -3221,8 +3289,6 @@ async function loadAndShowStats() {
 // ── MP identity handshake (guest sends username+token to host after connect) ──
 let mpGuestUsername = null;
 let mpGuestToken    = null;
-
-
 
 function endGame() {
   gameState = 'over';
