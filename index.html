@@ -70,15 +70,52 @@
     #pause-hint { font-size: 0.68rem; color: #444; letter-spacing: 0.1rem; }
 
     /* ── Touch controls ── */
+    /* --touch-scale is set by scaleGame() to the same factor driving the
+       canvas size, so the button rows grow/shrink as one unified area with
+       the canvas rather than staying a fixed size independently of it. */
+    :root { --touch-scale: 1; }
     #touch-controls, #touch-controls-p2 {
       display: none; flex-direction: row;
-      width: 100%; gap: 16px;
-      padding: 10px 0 4px;
+      width: 100%; gap: calc(16px * var(--touch-scale));
+      padding: calc(10px * var(--touch-scale)) 0 calc(4px * var(--touch-scale));
     }
+    /* ── Slide strip — alternate control style, same footprint as the button rows ── */
+    .slide-strip {
+      display: none; width: 100%;
+      padding: calc(10px * var(--touch-scale)) 0 calc(4px * var(--touch-scale));
+    }
+    .slide-track {
+      position: relative; width: 100%;
+      height: calc(64px * var(--touch-scale));
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: calc(32px * var(--touch-scale)); touch-action: none; overflow: hidden;
+    }
+    /* Fixed anchor marker — sits at the exact center (50%) and never moves,
+       since the anchor point itself is now fixed rather than touch-placed. */
+    .slide-center-mark {
+      position: absolute; left: 50%; width: 1px; top: 6px; bottom: 6px;
+      background: rgba(255,255,255,0.25); pointer-events: none;
+    }
+    /* Lighter marks at 25%/75% show where each side reaches max speed —
+       positioned as their own elements so the percentages are exact. */
+    .slide-max-mark {
+      position: absolute; width: 1px; top: 10px; bottom: 10px;
+      background: rgba(255,255,255,0.10); pointer-events: none;
+    }
+    .slide-max-mark.left  { left: 25%; }
+    .slide-max-mark.right { left: 75%; }
+    .slide-thumb {
+      position: absolute; top: 4px; bottom: 4px; width: calc(44px * var(--touch-scale));
+      left: 50%; transform: translateX(-50%);
+      background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.3);
+      border-radius: calc(22px * var(--touch-scale)); pointer-events: none; transition: background 0.08s;
+      display: none;
+    }
+    .slide-track.active .slide-thumb { display: block; background: rgba(255,255,255,0.22); }
     .touch-btn {
-      flex: 1; padding: 20px 0;
+      flex: 1; padding: calc(20px * var(--touch-scale)) 0;
       background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
-      color: rgba(255,255,255,0.75); font-size: 1.8rem; border-radius: 10px;
+      color: rgba(255,255,255,0.75); font-size: calc(1.8rem * var(--touch-scale)); border-radius: 10px;
       cursor: pointer; -webkit-user-select: none; user-select: none;
       touch-action: none; -webkit-tap-highlight-color: transparent;
       transition: background 0.08s;
@@ -397,14 +434,15 @@
     #rdy-identity {
       width: 100%; max-width: 320px;
       display: flex; flex-direction: column; gap: 0.5rem;
+      margin: 0 auto; box-sizing: border-box;
     }
     .rdy-id-label {
       font-size: 0.52rem; color: #444; letter-spacing: 0.15rem;
       text-transform: uppercase; text-align: center;
     }
-    .rdy-id-row { display: flex; gap: 6px; align-items: center; }
+    .rdy-id-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; max-width: 100%; }
     .rdy-id-input {
-      flex: 1; background: transparent; border: 1px solid #2a2a2a; color: #fff;
+      flex: 1 1 70px; min-width: 0; background: transparent; border: 1px solid #2a2a2a; color: #fff;
       font-family: 'Courier New', monospace; font-size: 0.7rem;
       letter-spacing: 0.05rem; padding: 0.4rem 0.6rem; outline: none;
       border-radius: 2px; transition: border-color 0.15s;
@@ -438,6 +476,7 @@
   <div style="position:relative;display:inline-block">
     <button class="mode-side-btn left" onclick="openStatsOverlay()" id="stats-mode-btn">STATS</button>
     <button class="btn" onclick="showOnly('2p-screen')">2 PLAYERS</button>
+    <button class="mode-side-btn right" onclick="openUpdateOverlay()" id="update-mode-btn">UPDATES</button>
   </div>
   <button class="btn" onclick="showMP()" style="border-color:#40c4ff;color:#40c4ff" onmouseover="this.style.background='#40c4ff';this.style.color='#0a0a0a'" onmouseout="this.style.background='transparent';this.style.color='#40c4ff'">MULTIPLAYER</button>
   <button class="btn" onclick="window.location.href='/feedback.html'" style="border-color:#444;color:#555;margin-top:0.1rem;letter-spacing:0.2rem">✉ &nbsp;FEEDBACK</button>
@@ -445,7 +484,7 @@
   <div style="height:0.2rem"></div>
   <div class="controls-hint">
     <strong style="color:#666">VS COMPUTER</strong><br>A / D &nbsp;·&nbsp; ← / →<br><br>
-    <strong style="color:#666">2 PLAYERS</strong><br>Player 1 (top): A / D &nbsp;&nbsp;|&nbsp;&nbsp; Player 2 (bottom): ← / →<br><br>
+    <strong style="color:#666">2 PLAYERS</strong><br>Player 1 (bottom): A / D &nbsp;&nbsp;|&nbsp;&nbsp; Player 2 (top): ← / →<br><br>
     SPACE to pause &nbsp;·&nbsp; ESC to quit
   </div>
   <div id="volume-row">🔊 Sound &nbsp;<input type="range" id="vol-slider" min="0" max="1" step="0.05" value="0.4" style="width:100px"></div>
@@ -498,7 +537,7 @@
   </div>
   <div style="height:0.1rem"></div>
   <div class="controls-hint" style="font-size:0.68rem">
-    Player 1 (top): <strong style="color:#aaa">A / D</strong> &nbsp;·&nbsp; Player 2 (bottom): <strong style="color:#aaa">← / →</strong>
+    Player 1 (bottom): <strong style="color:#aaa">A / D</strong> &nbsp;·&nbsp; Player 2 (top): <strong style="color:#aaa">← / →</strong>
   </div>
   <button class="btn" onclick="startGame('2p',null)">START GAME</button>
   <button class="btn btn-back" onclick="showMode()">← BACK</button>
@@ -518,10 +557,16 @@
         <button class="touch-btn" id="touch-left-p2">◄</button>
         <button class="touch-btn" id="touch-right-p2">►</button>
       </div>
+      <div id="slide-strip-p2" class="slide-strip">
+        <div class="slide-track"><div class="slide-max-mark left"></div><div class="slide-max-mark right"></div><div class="slide-center-mark"></div><div class="slide-thumb"></div></div>
+      </div>
       <canvas id="c" width="700" height="825"></canvas>
       <div id="touch-controls">
         <button class="touch-btn" id="touch-left">◄</button>
         <button class="touch-btn" id="touch-right">►</button>
+      </div>
+      <div id="slide-strip" class="slide-strip">
+        <div class="slide-track"><div class="slide-max-mark left"></div><div class="slide-max-mark right"></div><div class="slide-center-mark"></div><div class="slide-thumb"></div></div>
       </div>
       <p id="pause-hint">SPACE · pause &nbsp;&nbsp;ESC · leave</p>
       <!-- Desktop lab bottom bar — difficulty + controls info below canvas -->
@@ -537,7 +582,7 @@
           <button id="lab-obs-btn"   onclick="labForceObstacle()">+ SPAWN OBSTACLE</button>
         </div>
         <div class="lab-controls-info" style="margin:0;text-align:left">
-          <span>P1 (top paddle)</span> &nbsp;A / D &nbsp;·&nbsp; ← / → to move &nbsp;·&nbsp; SPACE to pause
+          <span>P1</span> &nbsp;A / D &nbsp;·&nbsp; ← / → to move &nbsp;·&nbsp; SPACE to pause
         </div>
       </div>
       <!-- Mobile lab panel — shown below touch controls in touch mode -->
@@ -664,7 +709,7 @@
   <div id="mp-room-code">·····</div>
   <div style="height:0.3rem"></div>
   <p id="mp-status">Creating room…</p>
-  <div class="mp-info">You will be <strong style="color:#fff">Player 1</strong> (top paddle)<br>Controls: A / D &nbsp;or&nbsp; ← / →</div>
+  <div class="mp-info">You will always appear at the <strong style="color:#fff">bottom</strong> of your screen<br>Controls: A / D &nbsp;or&nbsp; ← / →</div>
   <div style="height:0.2rem"></div>
   <button class="btn btn-back" onclick="cancelMP()">CANCEL</button>
 </div>
@@ -706,6 +751,40 @@
 </div>
 
 <!-- ── Stats overlay ── -->
+<div id="update-overlay" class="acct-overlay" onclick="if(event.target===this)closeUpdateOverlay()">
+  <div class="acct-box" style="max-width:440px;max-height:80vh;overflow-y:auto">
+    <p class="acct-title">PATCH NOTES</p>
+    <p style="font-size:0.55rem;color:#444;letter-spacing:0.08rem;margin-top:-0.6rem">AUGUST 12, 2026</p>
+
+    <div style="display:flex;flex-direction:column;gap:0.9rem;font-size:0.68rem;line-height:1.6;color:#888">
+
+      <div>
+        <p class="stats-section-label" style="color:#4caf50">NEW FEATURES</p>
+        <p>• Added a <strong style="color:#ccc">Slide Control</strong> option — drag your finger left/right instead of tapping buttons. Toggle it in Settings, and it syncs to your account across devices.</p>
+        <p>• Players always appear at the <strong style="color:#ccc">bottom</strong> of their own screen now — no more confusion about which paddle is yours in VS Computer, 2 Player, or Multiplayer.</p>
+      </div>
+
+      <div>
+        <p class="stats-section-label" style="color:#40c4ff">CHANGES</p>
+        <p>• 2 Player mode: Player 1 now controls the bottom paddle (A/D), Player 2 the top (Arrow keys) — swapped from before.</p>
+        <p>• Multiplayer host's screen now visually flips so the host also always sees themselves at the bottom, matching the guest's view.</p>
+        <p>• Touch controls and the canvas now scale together as one unified area instead of being sized separately.</p>
+      </div>
+
+      <div>
+        <p class="stats-section-label" style="color:#f44336">BUG FIXES</p>
+        <p>• Fixed 2 Player touch mode's bottom control row getting clipped off-screen.</p>
+        <p>• Fixed the multiplayer login form overflowing off the right edge on mobile.</p>
+        <p>• Fixed the Lab canvas sizing itself incorrectly on narrow screens.</p>
+        <p>• General cleanup and a full code audit — no known outstanding bugs.</p>
+      </div>
+
+    </div>
+
+    <button class="acct-btn acct-btn-secondary" onclick="closeUpdateOverlay()" style="margin-top:0.4rem">CLOSE</button>
+  </div>
+</div>
+
 <div id="stats-overlay" class="acct-overlay" onclick="if(event.target===this)closeStatsOverlay()">
   <div class="acct-box" style="max-width:400px">
     <p class="acct-title">PLAYER STATS</p>
@@ -816,6 +895,15 @@
     </div>
   </div>
 
+  <div class="stg-section">
+    <p class="stg-label">Touch Controls</p>
+    <div class="stg-grid" style="grid-template-columns:repeat(2,1fr)">
+      <button class="stg-btn on" id="stg-ctrl-buttons" style="--col:#aaaaaa" onclick="setControlStyle('buttons')">BUTTONS</button>
+      <button class="stg-btn"    id="stg-ctrl-slide"   style="--col:#aaaaaa" onclick="setControlStyle('slide')">SLIDE</button>
+    </div>
+    <p class="stg-note">Only affects touch devices — desktop always uses the keyboard</p>
+  </div>
+
   <button class="btn btn-back" onclick="showMode()">← BACK</button>
 </div>
 
@@ -906,7 +994,7 @@ const DIFF_COLOR = { easy: '#4caf50', medium: '#ffb300', hard: '#f44336' };
 
 // ── Multiplayer state ─────────────────────────────────────────────────────────
 let mpPeer = null, mpConn = null, mpMode = null; // 'host' | 'guest' | null
-let guestInputs = { l: false, r: false };        // host: last received from guest
+let guestInputs = { l: false, r: false, slideValue: null };  // host: last received from guest
 let mpGuestPaused = false;                        // guest: host has paused
 let mpHostReady = false, mpGuestReady = false;    // ready-screen state
 let chatMessages = [];                            // { from:'you'|'them', text }
@@ -923,6 +1011,7 @@ function generateCode() {
 const settings = {
   powerups: { wide:true, curve:true, power:true, split:true, shrink:true, reverse:true },
   visuals:  { ballTrail:true, screenShake:true, particles:true },
+  controlStyle: 'buttons', // 'buttons' or 'slide'
 };
 
 // Visual-effect state
@@ -937,6 +1026,16 @@ function toggleSetting(group, key) {
   settings[group][key] = !settings[group][key];
   const btn = document.getElementById('stg-' + key);
   btn.classList.toggle('on', settings[group][key]);
+}
+
+function setControlStyle(style) {
+  settings.controlStyle = style;
+  document.getElementById('stg-ctrl-buttons').classList.toggle('on', style === 'buttons');
+  document.getElementById('stg-ctrl-slide').classList.toggle('on', style === 'slide');
+  // Re-run the current screen's visibility logic so the right strip (button
+  // or slide) shows immediately if a game is already on screen.
+  if (currentScreen) showOnly(currentScreen);
+  if (typeof autoSaveSettings === 'function') autoSaveSettings();
 }
 
 function setWinScore(n) {
@@ -1027,7 +1126,7 @@ function hostGame() {
     });
     conn.on('data', d => {
       if      (d.t === 'input')    {
-        guestInputs.l = d.l; guestInputs.r = d.r;
+        guestInputs.l = d.l; guestInputs.r = d.r; guestInputs.slideValue = d.slideValue ?? null;
         if (d.px !== null && d.px !== undefined && paddleB) paddleB.x += (d.px - paddleB.x) * 0.35;
       }
       else if (d.t === 'ready')    { mpGuestReady = true; updateReadyStatus(); if (mpHostReady && mpGuestReady) startMPRematch(); }
@@ -1269,8 +1368,12 @@ function guestPredict(dt) {
   // Move guest's own paddle instantly — zero input lag
   const ps=padSpeed(), pwB=getPaddleW(false);
   const botRev = activeEffects.bottom.reversed > 0 ? -1 : 1;
-  if (keys['ArrowLeft']  || keys['a'] || keys['A']) paddleB.x -= botRev*ps*dt;
-  if (keys['ArrowRight'] || keys['d'] || keys['D']) paddleB.x += botRev*ps*dt;
+  if (touchMode && settings.controlStyle === 'slide') {
+    paddleB.x += slideBottom.value * botRev * ps * dt;
+  } else {
+    if (keys['ArrowLeft']  || keys['a'] || keys['A']) paddleB.x -= botRev*ps*dt;
+    if (keys['ArrowRight'] || keys['d'] || keys['D']) paddleB.x += botRev*ps*dt;
+  }
   paddleB.x = clamp(paddleB.x, 0, W-pwB);
   // Predict ball — wall bounces only, scoring handled by host
   ball.x += velX*dt; ball.y += velY*dt;
@@ -1317,10 +1420,12 @@ function guestPredict(dt) {
 // ── Send guest input (guest → host each frame) ────────────────────────────────
 function sendGuestInput() {
   if (!mpConn || !mpConn.open) return;
+  const useSlide = touchMode && settings.controlStyle === 'slide';
   mpConn.send({
     t: 'input',
     l: !!(keys['ArrowLeft']  || keys['a'] || keys['A']),
     r: !!(keys['ArrowRight'] || keys['d'] || keys['D']),
+    slideValue: useSlide ? slideBottom.value : null,
     px: paddleB ? paddleB.x : null,
   });
 }
@@ -1663,9 +1768,17 @@ function showOnly(id) {
   const desktopLabBottom = document.getElementById('lab-desktop-bottom');
   if (desktopLabBottom) desktopLabBottom.style.display = (inGame && labMode && !isNarrowForLab()) ? 'flex' : 'none';
   document.getElementById('mobile-btn-row').style.display = inGame ? 'flex' : 'none';
-  document.getElementById('touch-controls').style.display = showTouch ? 'flex' : 'none';
+  // Which control style is active decides whether the button strip or the
+  // slide strip fills each row's spot — only one of the two ever shows at once.
+  const useSlide   = settings.controlStyle === 'slide';
+  const showBottom = showTouch;
+  const showTop    = showTouch && mode === '2p';
+  document.getElementById('touch-controls').style.display    = (showBottom && !useSlide) ? 'flex' : 'none';
+  document.getElementById('slide-strip').style.display       = (showBottom &&  useSlide) ? 'flex' : 'none';
   const tcP2 = document.getElementById('touch-controls-p2');
-  if (tcP2) tcP2.style.display = (showTouch && mode === '2p') ? 'flex' : 'none';
+  if (tcP2) tcP2.style.display = (showTop && !useSlide) ? 'flex' : 'none';
+  const slideP2 = document.getElementById('slide-strip-p2');
+  if (slideP2) slideP2.style.display = (showTop && useSlide) ? 'flex' : 'none';
 
   document.getElementById('pause-hint').style.display = (labMode || touchMode) ? 'none' : '';
   document.getElementById('mobile-quit').style.display     = inGame ? 'block' : 'none';
@@ -1900,14 +2013,24 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 // ── Mobile: scale canvas to fit screen ────────────────────────────────────────
+// Native (logical) height budget for ONE touch-control button row, in the
+// same coordinate space as canvasNativeH (825). Used to fold the touch rows
+// directly into the same single scale calculation as the canvas itself,
+// instead of measuring their rendered size afterward and subtracting it.
+const TOUCH_ROW_NATIVE_H = 92;
+
 function scaleGame() {
   const canvasNativeW = 700;
   const canvasNativeH = 825;
 
   let s;
-  // Touch controls height — only visible in touch mode during gameplay
-  const tcEl = document.getElementById('touch-controls');
-  const tcH  = (touchMode && tcEl) ? (tcEl.offsetHeight || 100) + 16 : 0;
+  // How many touch rows will be showing — 2P mode has one above and one below
+  // the canvas; every other touch mode just has the one below.
+  const touchRows   = touchMode ? (mode === '2p' ? 2 : 1) : 0;
+  const touchRowsH  = touchRows * TOUCH_ROW_NATIVE_H;
+  // The canvas and all touch rows are scaled together as ONE combined native
+  // height, so everything grows/shrinks as a single unit.
+  const totalNativeH = canvasNativeH + touchRowsH;
 
   // Which lab layout (if any) is actually visible — mirrors the logic in showOnly()
   const showingMobileLabPanel = labMode && isNarrowForLab();
@@ -1916,35 +2039,42 @@ function scaleGame() {
   const mobileLabH  = showingMobileLabPanel && mobileLabEl ? (mobileLabEl.offsetHeight || 0) + 8 : 0;
 
   if (touchMode && window.innerWidth < 768) {
-    // Genuine mobile — shrink to fit width AND height together (including the lab
-    // panel's own height when it's showing) so everything sits on screen with no scroll.
+    // Genuine mobile — shrink to fit width AND height together (canvas + touch
+    // rows + the lab panel's own height when it's showing) so everything sits
+    // on screen with no scroll.
     const mobileW  = Math.min(window.innerWidth - 12, canvasNativeW);
     const scaleByW = mobileW / canvasNativeW;
-    const scaleByH = (window.innerHeight - 120 - tcH - mobileLabH) / canvasNativeH;
+    const scaleByH = (window.innerHeight - 120 - mobileLabH) / totalNativeH;
     s = Math.min(scaleByW, scaleByH);
   } else if (showingMobileLabPanel) {
-    // Narrow non-touch window showing the compact tabbed lab panel below the canvas —
-    // shrink to fit width AND height (including the panel's height) with no scrolling.
+    // Narrow non-touch window showing the compact tabbed lab panel below the canvas.
     const availW = window.innerWidth - 24;
-    const availH = window.innerHeight - 120 - tcH - mobileLabH;
+    const availH = window.innerHeight - 120 - mobileLabH;
     const scaleByW = availW / canvasNativeW;
-    const scaleByH = availH / canvasNativeH;
+    const scaleByH = availH / totalNativeH;
     s = Math.min(scaleByW, scaleByH, 1);
   } else {
-    // Desktop: account for sidebar, lab bottom bar, and touch controls if visible
+    // Desktop: account for sidebar, lab bottom bar, and touch rows if visible
     const sidebarW  = showingDesktopSidebar ? 244 : 0;
     const labBottom = showingDesktopSidebar
       ? (document.getElementById('lab-desktop-bottom').offsetHeight || 120) + 16
       : 0;
     const availW = window.innerWidth  - sidebarW - 48;
-    const availH = window.innerHeight - 120 - labBottom - tcH;
+    const availH = window.innerHeight - 120 - labBottom;
     const scaleByW = availW / canvasNativeW;
-    const scaleByH = availH / canvasNativeH;
+    const scaleByH = availH / totalNativeH;
     s = Math.min(scaleByW, scaleByH, 1);
   }
 
   canvas.style.width  = Math.round(canvasNativeW * s) + 'px';
   canvas.style.height = Math.round(canvasNativeH * s) + 'px';
+
+  // Scale the touch button rows using the SAME factor s, so they grow and
+  // shrink together with the canvas as one unified area instead of staying
+  // a fixed size while only the canvas resizes around them.
+  if (touchMode) {
+    document.documentElement.style.setProperty('--touch-scale', s);
+  }
 }
 window.addEventListener('resize', () => {
   scaleGame();
@@ -1958,6 +2088,70 @@ document.body.classList.toggle('touch-mode', touchMode);
 scaleGame();
 setTimeout(scaleGame, 100); // re-run after layout settles
 
+// ── Slide control system ────────────────────────────────────────────────────
+// The anchor is a FIXED point at the exact center of the strip (50) — it
+// never moves regardless of where a touch lands. From that fixed center,
+// each side ramps 0→max speed linearly across its own inner half (center to
+// the 25%/75% mark), then stays pinned at max for the remaining outer
+// quarter on that side. Speed is capped to exactly match button-mode's max
+// speed; it can never exceed it.
+const SLIDE_CENTER    = 50; // fixed anchor position (0–100 scale)
+const SLIDE_RAMP_HALF = 25; // distance from center to where max speed is reached
+
+function createSlideTrack(stripEl) {
+  const trackEl = stripEl ? stripEl.querySelector('.slide-track') : null;
+  const thumbEl = stripEl ? stripEl.querySelector('.slide-thumb') : null;
+  const state = { value: 0, touchId: null };
+  if (!trackEl) return state;
+
+  function toPct(clientX) {
+    const rect = trackEl.getBoundingClientRect();
+    if (!rect.width) return 50;
+    return clamp(((clientX - rect.left) / rect.width) * 100, 0, 100);
+  }
+
+  function updateValue(pct) {
+    const diff = pct - SLIDE_CENTER;
+    state.value = clamp(diff / SLIDE_RAMP_HALF, -1, 1);
+    if (thumbEl) thumbEl.style.left = pct + '%';
+  }
+
+  trackEl.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    state.touchId = t.identifier;
+    updateValue(toPct(t.clientX));
+    trackEl.classList.add('active');
+  }, { passive: false });
+
+  trackEl.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier === state.touchId) updateValue(toPct(t.clientX));
+    }
+  }, { passive: false });
+
+  function endTouch(e) {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier === state.touchId) {
+        state.touchId = null;
+        state.value   = 0;
+        trackEl.classList.remove('active');
+      }
+    }
+  }
+  trackEl.addEventListener('touchend',    endTouch, { passive: false });
+  trackEl.addEventListener('touchcancel', endTouch, { passive: false });
+
+  return state;
+}
+
+// Bottom strip = whichever paddle sits at the bottom physical position
+// (Player 1 in 2P, the local player in AI/MP). Top strip = Player 2 in 2P only.
+const slideBottom = createSlideTrack(document.getElementById('slide-strip'));
+const slideTop    = createSlideTrack(document.getElementById('slide-strip-p2'));
+
 // Touch controls
 const tcLeft  = document.getElementById('touch-left');
 const tcRight = document.getElementById('touch-right');
@@ -1969,12 +2163,17 @@ const touchState = { p1l: false, p1r: false, p2l: false, p2r: false };
 
 function applyTouchState() {
   if (mode === '2p') {
-    // Bottom paddle (P2) — Arrow keys
-    keys['ArrowLeft']  = touchState.p1l;
-    keys['ArrowRight'] = touchState.p1r;
-    // Top paddle (P1) — A/D keys
-    keys['a'] = keys['A'] = touchState.p2l;
-    keys['d'] = keys['D'] = touchState.p2r;
+    // p1l/p1r = the touch row below the canvas (bottom of the physical screen).
+    // p2l/p2r = the touch row above the canvas (top of the physical screen).
+    // These must trigger whichever KEYS currently move the paddle on that same
+    // physical side, so a player reaching for the bottom row always moves the
+    // bottom paddle regardless of which player number they are.
+    // Player 1 = bottom paddle (A/D) — bottom touch row triggers A/D
+    keys['a'] = keys['A'] = touchState.p1l;
+    keys['d'] = keys['D'] = touchState.p1r;
+    // Player 2 = top paddle (Arrow keys) — top touch row triggers Arrow keys
+    keys['ArrowLeft']  = touchState.p2l;
+    keys['ArrowRight'] = touchState.p2r;
   } else {
     // AI / MP: bottom touch controls own paddle — A/D keys
     keys['a'] = keys['A'] = touchState.p1l;
@@ -2027,23 +2226,55 @@ function update(dt) {
   const pwT = getPaddleW(true);
   const pwB = getPaddleW(false);
 
-  // Player 1 (top) movement — reverse flips A/D and arrow keys
-  const topRev = activeEffects.top.reversed > 0 ? -1 : 1;
-  if (keys['a']||keys['A']) paddleT.x -= topRev * ps*dt;
-  if (keys['d']||keys['D']) paddleT.x += topRev * ps*dt;
+  const topRev = activeEffects.top.reversed    > 0 ? -1 : 1;
+  const botRev = activeEffects.bottom.reversed > 0 ? -1 : 1;
 
-  if (mode==='2p') {
-    const botRev = activeEffects.bottom.reversed > 0 ? -1 : 1;
-    if (keys['ArrowLeft'])  paddleB.x -= botRev * ps*dt;
-    if (keys['ArrowRight']) paddleB.x += botRev * ps*dt;
+  const useSlide = touchMode && settings.controlStyle === 'slide';
+
+  if (mode === '2p') {
+    // Player 1 = bottom paddle (A/D or bottom slide strip)
+    // Player 2 = top paddle (Arrow keys or top slide strip)
+    if (useSlide) {
+      paddleB.x += slideBottom.value * botRev * ps * dt;
+      paddleT.x += slideTop.value    * topRev * ps * dt;
+    } else {
+      if (keys['a']||keys['A'])  paddleB.x -= botRev * ps*dt;
+      if (keys['d']||keys['D'])  paddleB.x += botRev * ps*dt;
+      if (keys['ArrowLeft'])     paddleT.x -= topRev * ps*dt;
+      if (keys['ArrowRight'])    paddleT.x += topRev * ps*dt;
+    }
   } else if (mode==='mp' && mpMode==='host') {
-    // Guest's raw inputs arrive via guestInputs; apply reverse effect server-side
-    const botRev = activeEffects.bottom.reversed > 0 ? -1 : 1;
-    if (guestInputs.l) paddleB.x -= botRev * ps*dt;
-    if (guestInputs.r) paddleB.x += botRev * ps*dt;
+    // Host is internally the top paddle (A/D or the single bottom slide strip,
+    // since only one strip shows outside 2P) — their own view renders flipped
+    // so they visually appear at the bottom; guest's raw inputs (bottom paddle)
+    // arrive via guestInputs, with reverse effect applied server-side. Guest's
+    // input may be a continuous slide value or discrete l/r depending on
+    // THEIR OWN control-style preference — either way ps/dt/reverse are all
+    // applied host-side to keep behavior authoritative.
+    if (useSlide) {
+      paddleT.x += slideBottom.value * topRev * ps * dt;
+    } else {
+      if (keys['a']||keys['A']) paddleT.x -= topRev * ps*dt;
+      if (keys['d']||keys['D']) paddleT.x += topRev * ps*dt;
+    }
+    if (guestInputs.slideValue !== null && guestInputs.slideValue !== undefined) {
+      paddleB.x += guestInputs.slideValue * botRev * ps * dt;
+    } else {
+      if (guestInputs.l) paddleB.x -= botRev * ps*dt;
+      if (guestInputs.r) paddleB.x += botRev * ps*dt;
+    }
   } else {
-    if (keys['ArrowLeft'])  paddleT.x -= topRev * ps*dt;
-    if (keys['ArrowRight']) paddleT.x += topRev * ps*dt;
+    // vs Computer — player is internally the top paddle; their view renders
+    // flipped so they visually appear at the bottom while the AI (bottom
+    // paddle internally) appears at the top.
+    if (useSlide) {
+      paddleT.x += slideBottom.value * topRev * ps * dt;
+    } else {
+      if (keys['a']||keys['A'])  paddleT.x -= topRev * ps*dt;
+      if (keys['d']||keys['D'])  paddleT.x += topRev * ps*dt;
+      if (keys['ArrowLeft'])     paddleT.x -= topRev * ps*dt;
+      if (keys['ArrowRight'])    paddleT.x += topRev * ps*dt;
+    }
     aiMove(dt, ps);
   }
   paddleT.x = clamp(paddleT.x, 0, W - pwT);
@@ -2561,7 +2792,32 @@ function aiMove(dt, ps) {
 }
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
+// ── Vertical view-flip support ────────────────────────────────────────────────
+// When true, the entire draw pass is mirrored top-to-bottom (position only —
+// left/right stays literal, so controls are completely unaffected). Used so
+// the local player always sees themselves at the bottom regardless of which
+// physical paddle (top/bottom) they actually control internally.
+let renderFlipped = false;
+
+// Draws text at (x,y) honoring the current renderFlipped state — when flipped,
+// the text still renders upright (never mirrored/upside-down), just repositioned
+// to its mirrored Y location. Respects whatever font/fillStyle/textAlign/etc.
+// is already set on the context; only handles position + orientation.
+function fText(str, x, y) {
+  if (!renderFlipped) { cx.fillText(str, x, y); return; }
+  cx.save();
+  cx.translate(x, y);
+  cx.scale(1, -1);
+  cx.fillText(str, 0, 0);
+  cx.restore();
+}
+
 function draw() {
+  // Player always renders at the bottom: vs Computer always flips (player is
+  // internally the top paddle), and in multiplayer only the host flips (host
+  // is internally top; guest is already bottom and needs no flip).
+  renderFlipped = (mode === 'ai') || (mode === 'mp' && mpMode === 'host');
+
   cx.save();
   // Screen shake — random offset, decays each frame
   if (shakeAmt > 0) {
@@ -2570,6 +2826,7 @@ function draw() {
     if (shakeAmt < 0.3) shakeAmt = 0;
   }
   cx.scale(1.25, 1.25);   // 560×660 logical → 700×825 physical
+  if (renderFlipped) { cx.translate(0, H); cx.scale(1, -1); }
   cx.fillStyle='#000'; cx.fillRect(0,0,W,H);
 
   // Center dash
@@ -2581,16 +2838,24 @@ function draw() {
   cx.textAlign='center'; cx.textBaseline='middle';
   if (labMode) {
     cx.font='0.55rem Courier New'; cx.fillStyle='#1e1e1e';
-    cx.fillText('POWER-UP LAB', W/2, H/2 - 10);
+    fText('POWER-UP LAB', W/2, H/2 - 10);
   } else {
+    // The H/4 slot always pairs with scoreT (top paddle's score) and the H*3/4
+    // slot always pairs with scoreB (bottom paddle's score) — only the LABEL
+    // TEXT changes based on who currently controls which physical paddle.
+    // In 2P mode, Player 1 controls the bottom paddle and Player 2 the top,
+    // so their labels swap here; ai/mp keep their original pairing and instead
+    // get repositioned automatically by the flip transform above.
+    const topSlotLabel = mode === '2p' ? 'PLAYER 2' : 'PLAYER 1';
+    const botSlotLabel = mode === '2p' ? 'PLAYER 1' : (mode==='ai'?'COMPUTER':mode==='mp'?'OPPONENT':'PLAYER 2');
     cx.font='0.58rem Courier New'; cx.fillStyle='#2e2e2e';
-    cx.fillText('PLAYER 1', W/2, H/4-26);
+    fText(topSlotLabel, W/2, H/4-26);
     cx.font='bold 3.2rem Courier New'; cx.fillStyle='#252525';
-    cx.fillText(scoreT, W/2, H/4);
+    fText(scoreT, W/2, H/4);
     cx.font='0.58rem Courier New'; cx.fillStyle='#2e2e2e';
-    cx.fillText(mode==='ai'?'COMPUTER':mode==='mp'?'OPPONENT':'PLAYER 2', W/2, H*3/4+26);
+    fText(botSlotLabel, W/2, H*3/4+26);
     cx.font='bold 3.2rem Courier New'; cx.fillStyle='#252525';
-    cx.fillText(scoreB, W/2, H*3/4);
+    fText(scoreB, W/2, H*3/4);
   }
 
   // Speed indicator
@@ -2598,14 +2863,14 @@ function draw() {
   if (pct>0) {
     cx.font='0.52rem Courier New';
     cx.fillStyle=`rgba(255,110,60,${pct*0.38})`;
-    cx.fillText('SPEED ×'+ballSpeed.toFixed(1), W/2, H/2+20);
+    fText('SPEED ×'+ballSpeed.toFixed(1), W/2, H/2+20);
   }
 
   // Difficulty badge
   if (mode==='ai'&&difficulty) {
     cx.textAlign='right'; cx.font='0.5rem Courier New';
     cx.globalAlpha=0.22; cx.fillStyle=DIFF_COLOR[difficulty];
-    cx.fillText(difficulty.toUpperCase(), W-10, H-10);
+    fText(difficulty.toUpperCase(), W-10, H-10);
     cx.globalAlpha=1; cx.textAlign='center';
   }
 
@@ -2679,19 +2944,19 @@ function draw() {
     cx.textAlign='center';
     cx.fillStyle='#fff'; cx.font='bold 1.8rem Courier New';
     cx.shadowBlur=14; cx.shadowColor='#fff';
-    cx.fillText('PAUSED',W/2,H/2-12); cx.shadowBlur=0;
+    fText('PAUSED',W/2,H/2-12); cx.shadowBlur=0;
     cx.font='0.7rem Courier New'; cx.fillStyle='#666';
-    cx.fillText(mpMode==='host' ? 'SPACE to resume  ·  T to chat' : 'SPACE to resume', W/2, H/2+22);
+    fText(mpMode==='host' ? 'SPACE to resume  ·  T to chat' : 'SPACE to resume', W/2, H/2+22);
   }
   if (mpMode === 'guest' && mpGuestPaused) {
     cx.fillStyle='rgba(0,0,0,0.65)'; cx.fillRect(0,0,W,H);
     cx.textAlign='center';
     cx.fillStyle='#aaa'; cx.font='bold 1.6rem Courier New';
     cx.shadowBlur=14; cx.shadowColor='#aaa';
-    cx.fillText('GAME PAUSED',W/2,H/2-16); cx.shadowBlur=0;
+    fText('GAME PAUSED',W/2,H/2-16); cx.shadowBlur=0;
     cx.font='0.65rem Courier New'; cx.fillStyle='#555';
-    cx.fillText('HOST PAUSED THE GAME',W/2,H/2+14);
-    cx.fillText('PRESS T TO CHAT',W/2,H/2+36);
+    fText('HOST PAUSED THE GAME',W/2,H/2+14);
+    fText('PRESS T TO CHAT',W/2,H/2+36);
   }
   cx.restore();
   // Chat overlay drawn after restore so it's in physical canvas coords (700×825)
@@ -2715,7 +2980,7 @@ function drawCountdown() {
   cx.textAlign = 'center'; cx.textBaseline = 'middle';
   cx.font = 'bold 4.5rem Courier New';
   cx.fillStyle = '#fff'; cx.shadowBlur = 28; cx.shadowColor = '#fff';
-  cx.fillText(num, 0, 0);
+  fText(num, 0, 0);
   cx.shadowBlur = 0;
   cx.restore();
 }
@@ -2790,7 +3055,7 @@ function drawPowerup(pu) {
   cx.globalAlpha = alpha;
   cx.fillStyle = col; cx.font = 'bold 0.65rem Courier New';
   cx.textAlign = 'center'; cx.textBaseline = 'middle';
-  cx.fillText(PU_LABELS[pu.type], pu.cx, pu.cy);
+  fText(PU_LABELS[pu.type], pu.cx, pu.cy);
   cx.restore();
 }
 
@@ -2825,7 +3090,7 @@ function drawComboTag(x, y, count, rightAlign) {
   cx.font = 'bold 0.48rem Courier New';
   cx.fillStyle = '#fff';
   cx.shadowBlur = 10; cx.shadowColor = '#fff';
-  cx.fillText('⚡ ×' + count + ' COMBO', x, y);
+  fText('⚡ ×' + count + ' COMBO', x, y);
   cx.shadowBlur = 0;
   cx.restore();
 }
@@ -2842,7 +3107,7 @@ function drawEffectBadge(x, y, type, frac) {
   cx.beginPath(); cx.roundRect(x, y, w, h, 3); cx.stroke();
   cx.globalAlpha = 1; cx.fillStyle = col;
   cx.font = 'bold 0.5rem Courier New'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
-  cx.fillText(PU_NAMES[type], x + w/2, y + h/2);
+  fText(PU_NAMES[type], x + w/2, y + h/2);
   cx.restore();
 }
 
@@ -3044,6 +3309,15 @@ function closeStatsOverlay() {
   document.getElementById('stats-overlay').classList.remove('open');
 }
 
+function openUpdateOverlay() {
+  const el = document.getElementById('update-overlay');
+  positionOverCanvas(el);
+  el.classList.add('open');
+}
+function closeUpdateOverlay() {
+  document.getElementById('update-overlay').classList.remove('open');
+}
+
 function refreshAcctView() {
   const out = document.getElementById('acct-loggedout');
   const inn = document.getElementById('acct-loggedin');
@@ -3125,6 +3399,7 @@ function gatherSettings() {
     winScore: WINNING_SCORE,
     powerups: { ...settings.powerups },
     visuals:  { ...settings.visuals  },
+    controlStyle: settings.controlStyle,
   };
 }
 
@@ -3155,6 +3430,13 @@ function applyLoadedSettings(s) {
         if (btn) btn.classList.toggle('on', settings.visuals[key]);
       }
     }
+  }
+  if (s.controlStyle === 'buttons' || s.controlStyle === 'slide') {
+    settings.controlStyle = s.controlStyle;
+    const btnEl   = document.getElementById('stg-ctrl-buttons');
+    const slideEl = document.getElementById('stg-ctrl-slide');
+    if (btnEl)   btnEl.classList.toggle('on', s.controlStyle === 'buttons');
+    if (slideEl) slideEl.classList.toggle('on', s.controlStyle === 'slide');
   }
 }
 
