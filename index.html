@@ -776,7 +776,6 @@
         <p>• Fixed 2 Player touch mode's bottom control row getting clipped off-screen.</p>
         <p>• Fixed the multiplayer login form overflowing off the right edge on mobile.</p>
         <p>• Fixed the Lab canvas sizing itself incorrectly on narrow screens.</p>
-        <p>• General cleanup and a full code audit — no known outstanding bugs.</p>
       </div>
 
     </div>
@@ -3311,7 +3310,13 @@ function closeStatsOverlay() {
 
 function openUpdateOverlay() {
   const el = document.getElementById('update-overlay');
-  positionOverCanvas(el);
+  // This popup can be taller than the current screen's own content area
+  // (e.g. the home menu), so size it to the true full viewport instead of
+  // matching that screen's rect — otherwise it can spill past the top.
+  el.style.left   = '0px';
+  el.style.top    = window.scrollY + 'px';
+  el.style.width  = window.innerWidth  + 'px';
+  el.style.height = window.innerHeight + 'px';
   el.classList.add('open');
 }
 function closeUpdateOverlay() {
